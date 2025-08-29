@@ -12,7 +12,7 @@ NUM_NODOS = 100000
 NUM_ARISTAS = 450000
 
 OUT_NODES = Path("Nodes.pgdf")
-OUT_EDGES = Path("Edegs.pgdf")
+OUT_EDGES = Path("Edges.pgdf")
 
 # Ratio of persons vs orgs
 PERSON_RATIO = 0.85
