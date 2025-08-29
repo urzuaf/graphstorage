@@ -11,8 +11,8 @@ SEED = 1337
 NUM_NODOS = 100000
 NUM_ARISTAS = 450000
 
-OUT_NODES = Path("nodos.txt")
-OUT_EDGES = Path("aristas.txt")
+OUT_NODES = Path("Nodes.pgdf")
+OUT_EDGES = Path("Edegs.pgdf")
 
 # Ratio of persons vs orgs
 PERSON_RATIO = 0.85
