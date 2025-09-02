@@ -1,2 +1,5 @@
 Edges.pgdf
 Nodes.pgdf
+rocksstorage/databases/*
+mapdbstorage/databases/*
+custom/databases/*
