@@ -3,13 +3,12 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
+import java.util.Locale;
+import static com.sparsity.sparksee.gdb.Objects.InvalidOID;
 
 /**
- * Cargador PGDF -> Sparksee 6.0.2
- * Lee Nodes.pgdf y Edges.pgdf y guarda un .gdb en disco.
- *
- * Uso:
- *   java -cp sparkseejava.jar:. SparkseePgdfLoader Nodes.pgdf Edges.pgdf [salida.gdb]
+  Uso:
+    java -cp sparkseejava.jar:. SparkseePgdfLoader Nodes.pgdf Edges.pgdf [salida.gdb] [--get <ext_id>]
  */
 public class SparkseePgdfLoader {
 
@@ -26,18 +25,27 @@ public class SparkseePgdfLoader {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
-            System.err.println("Uso: java -cp sparkseejava.jar:. SparkseePgdfLoader <Nodes.pgdf> <Edges.pgdf> [salida.gdb]");
+            System.err.println("Uso: java -cp sparkseejava.jar:. SparkseePgdfLoader <Nodes.pgdf> <Edges.pgdf> [salida.gdb] [--get <ext_id>]");
             System.exit(1);
         }
         String nodesPath = args[0];
         String edgesPath = args[1];
-        String dbPath = (args.length >= 3) ? args[2] : DEFAULT_DB;
+        String dbPath = (args.length >= 3 && !args[2].startsWith("--")) ? args[2] : DEFAULT_DB;
+
+        // parse opcional --get <ext_id>
+        String wantedId = null;
+        for (int i = 2; i < args.length; i++) {
+            if ("--get".equals(args[i]) && i + 1 < args.length) {
+                wantedId = args[i + 1];
+                break;
+            }
+        }
 
         SparkseePgdfLoader loader = new SparkseePgdfLoader();
-        loader.run(nodesPath, edgesPath, dbPath);
+        loader.run(nodesPath, edgesPath, dbPath, wantedId);
     }
 
-private void run(String nodesPath, String edgesPath, String dbPath) throws Exception {
+    private void run(String nodesPath, String edgesPath, String dbPath, String wantedId) throws Exception {
     SparkseeConfig cfg = new SparkseeConfig("sparksee.cfg");
     String cid = System.getenv("CLIENT_ID");
     String lic = System.getenv("LICENSE_ID");
@@ -49,21 +57,26 @@ private void run(String nodesPath, String edgesPath, String dbPath) throws Excep
     Session sess = null;
     try {
         db = sparksee.create(dbPath, "PGDF");
-        db.disableRollback();  // opcional para ingesta masiva
+        db.disableRollback(); // ingesta masiva
         sess = db.newSession();
         Graph g = sess.getGraph();
 
-        // Atributo global de id externo (único)
         extIdAttr = ensureAttribute(g, Type.NodesType, "ext_id", DataType.String, AttributeKind.Unique);
 
         System.out.println("Cargando nodos desde: " + nodesPath);
-        loadNodes(sess, g, Paths.get(nodesPath));   // ya hace begin/commit internos
+        loadNodes(sess, g, Paths.get(nodesPath));   
 
         System.out.println("Cargando aristas desde: " + edgesPath);
-        loadEdges(sess, g, Paths.get(edgesPath));   // ya hace begin/commit internos
+        loadEdges(sess, g, Paths.get(edgesPath));  
 
-        // ¡Listo! No hagas commit aquí: no hay transacción abierta.
         System.out.println("Hecho. DB guardada en: " + dbPath);
+
+        if (wantedId != null && !wantedId.isEmpty()) {
+            if (extIdAttr == Attribute.InvalidAttribute) {
+                extIdAttr = g.findAttribute(Type.NodesType, "ext_id");
+            }
+            printNodeByExtId(sess, g, wantedId);
+        }
     } finally {
         if (sess != null) sess.close();
         if (db != null) db.close();
@@ -71,10 +84,9 @@ private void run(String nodesPath, String edgesPath, String dbPath) throws Excep
     }
 }
 
-
-    /* =========================
+    /* 
        NODES
-       ========================= */
+      */
     private void loadNodes(Session sess, Graph g, Path nodesFile) throws IOException {
         try (BufferedReader br = Files.newBufferedReader(nodesFile, StandardCharsets.UTF_8)) {
             String line;
@@ -82,16 +94,15 @@ private void run(String nodesPath, String edgesPath, String dbPath) throws Excep
             int count = 0;
             Value v = new Value();
 
-            sess.beginUpdate(); // empezamos transacción de escritura
+            sess.beginUpdate();
 
             while ((line = br.readLine()) != null) {
                 if (line.isEmpty()) continue;
-                // Encabezado: líneas que empiezan con "@id|"
                 if (line.startsWith("@id|")) {
                     header = line.split("\\|", -1);
                     continue;
                 }
-                if (header == null) continue; // aún no hay encabezado
+                if (header == null) continue;
 
                 String[] cols = line.split("\\|", -1);
                 if (cols.length != header.length) {
@@ -99,25 +110,21 @@ private void run(String nodesPath, String edgesPath, String dbPath) throws Excep
                     continue;
                 }
 
-                Map<String,String> row = new HashMap<>(header.length * 2);
-                for (int i = 0; i < header.length; i++) row.put(header[i], cols[i]);
-
-                String label = row.get("@label");
-                String extId = row.get("@id");
+                String label = null, extId = null;
+                for (int i = 0; i < header.length; i++) {
+                    if ("@label".equals(header[i])) label = cols[i];
+                    else if ("@id".equals(header[i])) extId = cols[i];
+                }
                 if (label == null || extId == null || label.isEmpty() || extId.isEmpty()) {
                     System.err.println("Fila sin @id/@label (saltando): " + line);
                     continue;
                 }
 
                 int typeId = ensureNodeType(g, label);
-                // Crear nodo
                 long oid = g.newNode(typeId);
-                // Guardar map para aristas
                 oidByExtId.put(extId, oid);
-                // Setear ext_id único global
                 g.setAttribute(oid, extIdAttr, v.setString(extId));
 
-                // Atributos por fila (excepto especiales)
                 for (int i = 0; i < header.length; i++) {
                     String name = header[i];
                     if (name.equals("@id") || name.equals("@label")) continue;
@@ -132,7 +139,6 @@ private void run(String nodesPath, String edgesPath, String dbPath) throws Excep
                             try {
                                 g.setAttribute(oid, attrId, v.setInteger(Integer.parseInt(val)));
                             } catch (NumberFormatException nfe) {
-                                // fallback a string si viene sucio
                                 g.setAttribute(oid, attrId, v.setString(val));
                             }
                             break;
@@ -154,20 +160,18 @@ private void run(String nodesPath, String edgesPath, String dbPath) throws Excep
         }
     }
 
-    /* =========================
+    /*
        EDGES
-       ========================= */
+       */
     private void loadEdges(Session sess, Graph g, Path edgesFile) throws IOException {
         try (BufferedReader br = Files.newBufferedReader(edgesFile, StandardCharsets.UTF_8)) {
             String line = br.readLine();
             if (line == null) return;
 
-            // Espera encabezado: @id|@label|@dir|@out|@in
             String[] header = line.split("\\|", -1);
             Map<String, Integer> idx = new HashMap<>();
             for (int i = 0; i < header.length; i++) idx.put(header[i], i);
 
-            Value v = new Value();
             int count = 0;
             sess.beginUpdate();
 
@@ -184,7 +188,7 @@ private void run(String nodesPath, String edgesPath, String dbPath) throws Excep
                 String outExt = cols[idx.get("@out")];
                 String inExt  = cols[idx.get("@in")];
 
-                boolean directed = !"F".equalsIgnoreCase(dir); // 'T' => true
+                boolean directed = !"F".equalsIgnoreCase(dir);
                 int edgeType = ensureEdgeType(g, label, directed);
 
                 Long outOid = oidByExtId.get(outExt);
@@ -209,9 +213,79 @@ private void run(String nodesPath, String edgesPath, String dbPath) throws Excep
         }
     }
 
-    /* =========================
+    /*
+       LOOKUP @id (ext_id)
+      */
+    private void printNodeByExtId(Session sess, Graph g, String extId) {
+        System.out.println("searching node ext_id='" + extId + "' ...");
+        sess.begin();
+        try {
+            Value v = new Value();
+            long oid = g.findObject(extIdAttr, v.setString(extId)); 
+            if (oid == InvalidOID) {
+                System.out.println("Not found.");
+                sess.commit();
+                return;
+            }
+
+            int typeId = g.getObjectType(oid);
+            Type t = g.getType(typeId);
+            System.out.println("=== Nodo " + extId + " (OID=" + oid + ", tipo=" + t.getName() + ") ===");
+
+            AttributeList attrs = g.getAttributes(oid);  
+            for (Integer attrId : attrs) {
+                Attribute meta = g.getAttribute(attrId); 
+                String name = meta.getName();
+                DataType dt = meta.getDataType();
+
+                if (dt == DataType.Text) {
+                    try (TextStream ts = g.getAttributeText(oid, attrId)) {
+                        if (ts == null || ts.isNull()) {
+                            System.out.println(name + " = <NULL>");
+                        } else {
+                            StringBuilder sb = new StringBuilder();
+                            char[] buf = new char[1024];
+                            int n;
+                            while ((n = ts.read(buf, buf.length)) > 0 && sb.length() < 2048) {
+                                sb.append(buf, 0, n);
+                            }
+                            String s = sb.toString();
+                            if (s.length() > 512) s = s.substring(0, 512) + "…";
+                            System.out.println(name + " (TEXT) = " + s);
+                        }
+                    }
+                    continue;
+                }
+
+                Value val = new Value();
+                g.getAttribute(oid, attrId, val);
+
+                String out;
+                switch (dt) {
+                    case Boolean: out = Boolean.toString(val.getBoolean()); break;
+                    case Integer: out = Integer.toString(val.getInteger()); break;
+                    case Long:    out = Long.toString(val.getLong()); break;
+                    case Double:  out = Double.toString(val.getDouble()); break;
+                    case Timestamp:
+                        out = new java.util.Date(val.getLong()).toString();
+                        break;
+                    case OID:     out = Long.toString(val.getOID()); break;
+                    case String:
+                    default:      out = val.getString();
+                }
+                System.out.println(name + " = " + out);
+            }
+
+            sess.commit();
+        } catch (RuntimeException e) {
+            try { sess.rollback(); } catch (Exception ignore) {}
+            throw e;
+        }
+    }
+
+    /* 
        HELPERS
-       ========================= */
+       */
     private int ensureNodeType(Graph g, String label) {
         Integer cached = nodeTypeIds.get(label);
         if (cached != null) return cached;
@@ -228,7 +302,6 @@ private void run(String nodesPath, String edgesPath, String dbPath) throws Excep
         if (cached != null) return cached;
         int type = g.findType(label);
         if (type == Type.InvalidType) {
-            // true = crea índice de vecinos (mejora traversal)
             type = g.newEdgeType(label, directed, true);
         }
         edgeTypeIds.put(label, type);
