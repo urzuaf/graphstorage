@@ -1,8 +1,52 @@
-2025-09-07 14:27:37.983|SPARKSEE[INFO] ** START ** 2025-09-07 14:27:37.983 Software version: 6.0.2
-2025-09-07 14:27:37.983|SPARKSEE[INFO] Device id: 894aeccd-6cac-5c5f-9c97-37e957eedf2d
-2025-09-07 14:27:37.984|SPARKSEE[INFO] License key updated.
-2025-09-07 14:27:37.984|SPARKSEE[INFO] Decoded license: Software version [6] License version [3] Objects limit [1000000000] Sessions limit [unlimited] License Identifier [541fa6fa-d3b5-4f47-9244-0aad8ee92564] Client Identifier [421605f1-2878-4dd5-bb3e-94def4ae87f0] Expiration date (d/m/y) [27/2/2026] High-Availability [off]
-2025-09-07 14:27:37.993|SPARKSEE[INFO] GraphPool 'HelloSparksee' has been created at HelloSparksee.gdb
-2025-09-07 14:27:38.195|GraphPool[INFO] Closed HelloSparksee.gdb
-2025-09-07 14:27:38.195|GraphPool[WARNING] Removed HelloSparksee.gdb.tmp
-2025-09-07 14:27:38.195|SPARKSEE[INFO] ** SHUTDOWN ** 2025-09-07 14:27:38.195
+2025-09-07 19:48:27.549|SPARKSEE[INFO] ** START ** 2025-09-07 19:48:27.549 Software version: 6.0.2
+2025-09-07 19:48:27.550|SPARKSEE[CONFIG] Configuration [sparksee.license=XCNH...3842 LicenseId='541fa6fa-d3b5-4f47-9244-0aad8ee92564' ClientId='421605f1-2878-4dd5-bb3e-94def4ae87f0' TmpFolder='_sparksee/' TmpEnabled='false' InMemAllocSize='0' sparksee.io.pool.frame.size=1extents sparksee.io.pool.persistent.minsize=64frames sparksee.io.pool.persistent.maxsize=0frames sparksee.io.pool.temporal.minsize=16frames sparksee.io.pool.temporal.maxsize=0frames sparksee.io.pool.partitions=16pools sparksee.io.rollback=true sparksee.io.recovery.logfile='' sparksee.io.recovery=false sparksee.io.recovery.cachesize=0extents sparksee.io.recovery.checkpointTime=60secs sparksee.io.cache.maxsize=0MB sparksee.io.cache.inmemory=0sparksee.cache.statistics=false sparksee.cache.statisticsFile='statistics.log' sparksee.cache.statisticsSnapshotTime=1000msecs sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true sparksee.ha=false sparksee.ha.coordinators='' sparksee.ha.ip='' sparksee.ha.sync=0secs sparksee.ha.master.history=86400secs ]
+2025-09-07 19:48:27.550|SPARKSEE[INFO] Device id: 824ae3cd-6eac-515f-8497-3ee903ee8e2d
+2025-09-07 19:48:27.550|SPARKSEE[INFO] Decoded license: Software version [6] License version [3] Objects limit [1000000000] Sessions limit [unlimited] License Identifier [541fa6fa-d3b5-4f47-9244-0aad8ee92564] Client Identifier [421605f1-2878-4dd5-bb3e-94def4ae87f0] Expiration date (d/m/y) [27/2/2026] High-Availability [off]
+2025-09-07 19:48:27.550|Storage[CONFIG] Configuration [sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true]
+2025-09-07 19:48:27.550|Storage[CONFIG] Configuration [sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true]
+2025-09-07 19:48:27.552|Storage[CONFIG] Configuration [sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true]
+2025-09-07 19:48:27.552|Cache[CONFIG] Configuration [sparksee.io.pool.frame.size=1extents sparksee.io.pool.persistent.minsize=64frames sparksee.io.pool.persistent.maxsize=0frames sparksee.io.pool.temporal.minsize=16frames sparksee.io.pool.temporal.maxsize=0frames sparksee.io.pool.partitions=16pools sparksee.io.rollback=true sparksee.io.recovery.logfile='' sparksee.io.recovery=false sparksee.io.recovery.cachesize=0extents sparksee.io.recovery.checkpointTime=60secs sparksee.io.cache.maxsize=0MB sparksee.io.cache.inmemory=0sparksee.cache.statistics=false sparksee.cache.statisticsFile='statistics.log' sparksee.cache.statisticsSnapshotTime=1000msecs] Initialization [physical=16306256KB free=15781968KB max=3945236frames] Extent [ size=4096 pages=1 pagesize=4088bytes]
+2025-09-07 19:48:27.573|DataManager[FINE] Checkpoint started
+2025-09-07 19:48:27.574|DataManager[FINE] Checkpoint finished
+2025-09-07 19:48:27.574|SPARKSEE[INFO] GraphPool 'PGDF' has been created at graph.gbd
+2025-09-07 19:48:27.575|RM[INFO] ROLLBACK DISABLED
+2025-09-07 19:48:33.794|Tx[SEVERE] The transaction can not be commited.
+2025-09-07 19:48:33.794|DataManager[FINE] Checkpoint started
+2025-09-07 19:48:34.063|DataManager[FINE] Checkpoint finished
+2025-09-07 19:48:34.178|GraphPool[INFO] Closed graph.gbd
+2025-09-07 19:48:34.178|GraphPool[WARNING] Removed graph.gbd.tmp
+2025-09-07 19:48:34.178|SPARKSEE[INFO] ** SHUTDOWN ** 2025-09-07 19:48:34.178
+2025-09-07 19:50:54.058|SPARKSEE[INFO] ** START ** 2025-09-07 19:50:54.058 Software version: 6.0.2
+2025-09-07 19:50:54.058|SPARKSEE[CONFIG] Configuration [sparksee.license=XCNH...3842 LicenseId='541fa6fa-d3b5-4f47-9244-0aad8ee92564' ClientId='421605f1-2878-4dd5-bb3e-94def4ae87f0' TmpFolder='_sparksee/' TmpEnabled='false' InMemAllocSize='0' sparksee.io.pool.frame.size=1extents sparksee.io.pool.persistent.minsize=64frames sparksee.io.pool.persistent.maxsize=0frames sparksee.io.pool.temporal.minsize=16frames sparksee.io.pool.temporal.maxsize=0frames sparksee.io.pool.partitions=16pools sparksee.io.rollback=true sparksee.io.recovery.logfile='' sparksee.io.recovery=false sparksee.io.recovery.cachesize=0extents sparksee.io.recovery.checkpointTime=60secs sparksee.io.cache.maxsize=0MB sparksee.io.cache.inmemory=0sparksee.cache.statistics=false sparksee.cache.statisticsFile='statistics.log' sparksee.cache.statisticsSnapshotTime=1000msecs sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true sparksee.ha=false sparksee.ha.coordinators='' sparksee.ha.ip='' sparksee.ha.sync=0secs sparksee.ha.master.history=86400secs ]
+2025-09-07 19:50:54.058|SPARKSEE[INFO] Device id: 824ae3cd-6eac-515f-8497-3ee903ee8e2d
+2025-09-07 19:50:54.059|SPARKSEE[INFO] Decoded license: Software version [6] License version [3] Objects limit [1000000000] Sessions limit [unlimited] License Identifier [541fa6fa-d3b5-4f47-9244-0aad8ee92564] Client Identifier [421605f1-2878-4dd5-bb3e-94def4ae87f0] Expiration date (d/m/y) [27/2/2026] High-Availability [off]
+2025-09-07 19:50:54.074|Storage[CONFIG] Configuration [sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true]
+2025-09-07 19:50:54.074|Storage[CONFIG] Configuration [sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true]
+2025-09-07 19:50:54.075|Storage[CONFIG] Configuration [sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true]
+2025-09-07 19:50:54.075|Cache[CONFIG] Configuration [sparksee.io.pool.frame.size=1extents sparksee.io.pool.persistent.minsize=64frames sparksee.io.pool.persistent.maxsize=0frames sparksee.io.pool.temporal.minsize=16frames sparksee.io.pool.temporal.maxsize=0frames sparksee.io.pool.partitions=16pools sparksee.io.rollback=true sparksee.io.recovery.logfile='' sparksee.io.recovery=false sparksee.io.recovery.cachesize=0extents sparksee.io.recovery.checkpointTime=60secs sparksee.io.cache.maxsize=0MB sparksee.io.cache.inmemory=0sparksee.cache.statistics=false sparksee.cache.statisticsFile='statistics.log' sparksee.cache.statisticsSnapshotTime=1000msecs] Initialization [physical=16306256KB free=15781968KB max=3945236frames] Extent [ size=4096 pages=1 pagesize=4088bytes]
+2025-09-07 19:50:54.097|DataManager[FINE] Checkpoint started
+2025-09-07 19:50:54.098|DataManager[FINE] Checkpoint finished
+2025-09-07 19:50:54.098|SPARKSEE[INFO] GraphPool 'PGDF' has been created at graph.gbd
+2025-09-07 19:50:54.099|RM[INFO] ROLLBACK DISABLED
+2025-09-07 19:51:00.203|DataManager[FINE] Checkpoint started
+2025-09-07 19:51:00.445|DataManager[FINE] Checkpoint finished
+2025-09-07 19:51:00.500|GraphPool[INFO] Closed graph.gbd
+2025-09-07 19:51:00.501|GraphPool[WARNING] Removed graph.gbd.tmp
+2025-09-07 19:51:00.501|SPARKSEE[INFO] ** SHUTDOWN ** 2025-09-07 19:51:00.501
+2025-09-07 19:57:55.965|SPARKSEE[INFO] ** START ** 2025-09-07 19:57:55.965 Software version: 6.0.2
+2025-09-07 19:57:55.965|SPARKSEE[CONFIG] Configuration [sparksee.license=XCNH...3842 LicenseId='541fa6fa-d3b5-4f47-9244-0aad8ee92564' ClientId='421605f1-2878-4dd5-bb3e-94def4ae87f0' TmpFolder='_sparksee/' TmpEnabled='false' InMemAllocSize='0' sparksee.io.pool.frame.size=1extents sparksee.io.pool.persistent.minsize=64frames sparksee.io.pool.persistent.maxsize=0frames sparksee.io.pool.temporal.minsize=16frames sparksee.io.pool.temporal.maxsize=0frames sparksee.io.pool.partitions=16pools sparksee.io.rollback=true sparksee.io.recovery.logfile='' sparksee.io.recovery=false sparksee.io.recovery.cachesize=0extents sparksee.io.recovery.checkpointTime=60secs sparksee.io.cache.maxsize=0MB sparksee.io.cache.inmemory=0sparksee.cache.statistics=false sparksee.cache.statisticsFile='statistics.log' sparksee.cache.statisticsSnapshotTime=1000msecs sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true sparksee.ha=false sparksee.ha.coordinators='' sparksee.ha.ip='' sparksee.ha.sync=0secs sparksee.ha.master.history=86400secs ]
+2025-09-07 19:57:55.965|SPARKSEE[INFO] Device id: 824ae3cd-6eac-515f-8497-3ee903ee8e2d
+2025-09-07 19:57:55.965|SPARKSEE[INFO] Decoded license: Software version [6] License version [3] Objects limit [1000000000] Sessions limit [unlimited] License Identifier [541fa6fa-d3b5-4f47-9244-0aad8ee92564] Client Identifier [421605f1-2878-4dd5-bb3e-94def4ae87f0] Expiration date (d/m/y) [27/2/2026] High-Availability [off]
+2025-09-07 19:57:55.980|Storage[CONFIG] Configuration [sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true]
+2025-09-07 19:57:55.980|Storage[CONFIG] Configuration [sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true]
+2025-09-07 19:57:55.981|Storage[CONFIG] Configuration [sparksee.storage.extentpages=1 sparksee.storage.extentsize=4KB sparksee.storage.allocationsize=10extents sparksee.storage.checksum=true]
+2025-09-07 19:57:55.981|Cache[CONFIG] Configuration [sparksee.io.pool.frame.size=1extents sparksee.io.pool.persistent.minsize=64frames sparksee.io.pool.persistent.maxsize=0frames sparksee.io.pool.temporal.minsize=16frames sparksee.io.pool.temporal.maxsize=0frames sparksee.io.pool.partitions=16pools sparksee.io.rollback=true sparksee.io.recovery.logfile='' sparksee.io.recovery=false sparksee.io.recovery.cachesize=0extents sparksee.io.recovery.checkpointTime=60secs sparksee.io.cache.maxsize=0MB sparksee.io.cache.inmemory=0sparksee.cache.statistics=false sparksee.cache.statisticsFile='statistics.log' sparksee.cache.statisticsSnapshotTime=1000msecs] Initialization [physical=16306256KB free=15781968KB max=3945236frames] Extent [ size=4096 pages=1 pagesize=4088bytes]
+2025-09-07 19:57:56.003|DataManager[FINE] Checkpoint started
+2025-09-07 19:57:56.004|DataManager[FINE] Checkpoint finished
+2025-09-07 19:57:56.004|SPARKSEE[INFO] GraphPool 'PGDF' has been created at graph.gbd
+2025-09-07 19:57:56.005|RM[INFO] ROLLBACK DISABLED
+2025-09-07 19:58:02.092|DataManager[FINE] Checkpoint started
+2025-09-07 19:58:02.357|DataManager[FINE] Checkpoint finished
+2025-09-07 19:58:02.407|GraphPool[INFO] Closed graph.gbd
+2025-09-07 19:58:02.407|GraphPool[WARNING] Removed graph.gbd.tmp
+2025-09-07 19:58:02.407|SPARKSEE[INFO] ** SHUTDOWN ** 2025-09-07 19:58:02.407

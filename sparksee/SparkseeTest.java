@@ -5,8 +5,10 @@ public class SparkseeTest {
         try {
 
             // Initialize Sparksee
-            SparkseeConfig cfg = new SparkseeConfig();
+            SparkseeConfig cfg = new SparkseeConfig("sparksee.cfg");
             Sparksee sparksee = new Sparksee(cfg);
+            System.out.println("Hola");
+            System.out.println("Sparksee version: "+ sparksee.getVersion());
 
             // Create a new database
             Database db = sparksee.create("HelloSparksee.gdb", "HelloSparksee");
