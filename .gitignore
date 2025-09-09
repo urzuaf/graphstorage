@@ -6,4 +6,5 @@ custom/databases/*
 sparksee/sparksee.cfg
 *.gdb
 *.gdb.log
+*.class
 *.log
