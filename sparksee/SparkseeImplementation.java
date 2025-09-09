@@ -27,36 +27,48 @@ public class SparkseeImplementation {
     private int extIdAttr = Attribute.InvalidAttribute;
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 2) {
+        // Usage args saving graph: -n Nodes.pgdf -e Edges.pgdf -d [output.gdb]
+        // Usage args querying graph: -d [input.gdb] -g <node_ext_id>
+        if (args.length < 3) {
             System.err.println(
-                    "Usage: java -cp sparkseejava.jar:. SparkseeImplementation Nodes.pgdf Edges.pgdf [output.gdb] [--get <ext_id>]");
+                    "Usage: java -cp sparkseejava.jar:. SparkseeImplementation -n Nodes.pgdf -e Edges.pgdf -d [output.gdb]\n or java -cp sparkseejava.jar:. SparkseeImplementation -d [input.gdb] -g <ext_id>");
             System.exit(1);
         }
-        String nodesPath = args[0];
-        String edgesPath = args[1];
-        String dbPath = (args.length >= 3 && !args[2].startsWith("--")) ? args[2] : DEFAULT_DB;
 
-        String wantedId = null;
-        for (int i = 2; i < args.length; i++) {
-            if ("--get".equals(args[i]) && i + 1 < args.length) {
-                wantedId = args[i + 1];
-                break;
+        Map<String, String> params = new HashMap<>();
+        for (int i = 0; i < args.length; i++) {
+            if (args[i].startsWith("-") && i + 1 < args.length) {
+                params.put(args[i], args[i + 1]);
+                i++;
             }
         }
 
         SparkseeImplementation loader = new SparkseeImplementation();
-        loader.run(nodesPath, edgesPath, dbPath, wantedId, true);
+
+        if (params.containsKey("-n") && params.containsKey("-e") && params.containsKey("-d")) {
+            System.out.println("Saving graph...");
+            loader.run(params.get("-n"), params.get("-e"), params.get("-d"));
+            System.out.println("Graph saved.");
+            return;
+        }
+        if (params.containsKey("-d") && params.containsKey("-g")) {
+            System.out.println("Querying graph...");
+            loader.run(params.get("-d"), params.get("-g"));
+            System.out.println("Graph queried.");
+            return;
+        }
+
+        System.out.println("Invalid arguments.");
+        return;
     }
 
-    private void run(String nodesPath, String edgesPath, String dbPath, String wantedId, Boolean save) throws Exception {
-        //Save true means that the graph is saved
-        //Save false means that the graph is loaded from the dbPath and retrieves the wantedId
+    private void run(String nodesPath, String edgesPath, String dbPath) throws Exception {
         SparkseeConfig cfg = new SparkseeConfig("sparksee.cfg");
         Sparksee sparksee = new Sparksee(cfg);
         Database db = null;
         Session sess = null;
-
         try {
+            Files.deleteIfExists(Paths.get(dbPath));
             db = sparksee.create(dbPath, "PGDF");
             db.disableRollback();
             sess = db.newSession();
@@ -72,7 +84,33 @@ public class SparkseeImplementation {
             loadEdges(sess, g, Paths.get(edgesPath));
 
             System.out.println("Data saved to " + dbPath);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (sess != null)
+                sess.close();
+            if (db != null)
+                db.close();
+            sparksee.close();
+        }
+    }
 
+    private void run(String dbPath, String wantedId)
+            throws Exception {
+        SparkseeConfig cfg = new SparkseeConfig("sparksee.cfg");
+        Sparksee sparksee = new Sparksee(cfg);
+        Database db = null;
+        Session sess = null;
+
+        try {
+            System.out.println("Loading graph from " + dbPath);
+            db = sparksee.open(dbPath, true);
+            db.disableRollback();
+            sess = db.newSession();
+            Graph g = sess.getGraph();
+            System.out.println("Graph loaded from " + dbPath);
+            System.out.println("Getting node " + wantedId + " ...");
+            extIdAttr = ensureAttribute(g, Type.NodesType, "ext_id", DataType.String, AttributeKind.Unique);
             getWantedNode(wantedId, sess, g);
 
         } finally {
@@ -85,15 +123,14 @@ public class SparkseeImplementation {
 
     }
 
-    private void getWantedNode(String wantedId, Session sess, Graph g ){
-        if (wantedId != null && !wantedId.isEmpty()){
-            if (extIdAttr == Attribute.InvalidAttribute){
+    private void getWantedNode(String wantedId, Session sess, Graph g) {
+        if (wantedId != null && !wantedId.isEmpty()) {
+            if (extIdAttr == Attribute.InvalidAttribute) {
                 extIdAttr = g.findAttribute(Type.NodesType, "ext_id");
             }
         }
         printNodeByExtId(sess, g, wantedId);
     }
-
 
     private void loadNodes(Session sess, Graph g, Path nodesFile) throws IOException {
         try (BufferedReader br = Files.newBufferedReader(nodesFile, StandardCharsets.UTF_8)) {
@@ -348,8 +385,8 @@ public class SparkseeImplementation {
                 System.out.println(name + " = " + out);
             }
 
-                long endTime = System.nanoTime();
-                System.out.printf(" (%.2f ms)\n", (endTime - startTime) / 1_000_000.0);
+            long endTime = System.nanoTime();
+            System.out.printf(" (%.2f ms)\n", (endTime - startTime) / 1_000_000.0);
             sess.commit();
         } catch (RuntimeException e) {
             try {
