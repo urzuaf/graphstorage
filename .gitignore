@@ -4,3 +4,6 @@ rocksstorage/databases/*
 mapdbstorage/databases/*
 custom/databases/*
 sparksee/sparksee.cfg
+*.gdb
+*.gdb.log
+*.log
