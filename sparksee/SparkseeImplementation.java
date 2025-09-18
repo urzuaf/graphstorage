@@ -319,6 +319,8 @@ public class SparkseeImplementation {
         try {
             Value v = new Value();
             long oid = g.findObject(extIdAttr, v.setString(extId));
+            long endTime = System.nanoTime();
+            System.out.printf(" (%.2f ms)\n", (endTime - startTime) / 1_000_000.0);
             if (oid == InvalidOID) {
                 System.out.println("Not found.");
                 sess.commit();
@@ -385,8 +387,7 @@ public class SparkseeImplementation {
                 System.out.println(name + " = " + out);
             }
 
-            long endTime = System.nanoTime();
-            System.out.printf(" (%.2f ms)\n", (endTime - startTime) / 1_000_000.0);
+
             sess.commit();
         } catch (RuntimeException e) {
             try {
