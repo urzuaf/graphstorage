@@ -12,44 +12,65 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Consumer;
 
-
 public class GraphStore implements AutoCloseable {
 
-    private static final String CF_NODES = "cf_nodes";
-    private static final String CF_EDGES = "cf_edges";
-    private static final String CF_INDEX = "cf_index";
+    // Colecciones principales
+    private static final String CF_NODES = "cf_nodes"; 
+    private static final String CF_EDGES = "cf_edges"; 
+
+    // Índices separados
+    private static final String IDX_EDGEIDS_BY_LABEL = "idx_edgeids_by_label";      
+    private static final String IDX_SRC_BY_LABEL     = "idx_src_by_label";          
+    private static final String IDX_DST_BY_LABEL     = "idx_dst_by_label";         
+    private static final String IDX_NODES_BY_PROP    = "idx_nodes_by_prop";         
 
     private static final char SEP = '\0';
+    private static final String UPPER = "\uFFFF"; // cota superior para subSet
 
     private final DB db;
-    private final BTreeMap<String, NodeBlob> nodes;
-    private final BTreeMap<String, EdgeBlob> edges;
-    private final NavigableSet<String> index; // TreeSet ordenado para prefix scan
+    private final HTreeMap<String, NodeBlob> nodes;
+    private final HTreeMap<String, EdgeBlob> edges;
+
+    private final NavigableSet<String> idxEdgeIdsByLabel;
+    private final NavigableSet<String> idxSrcByLabel;
+    private final NavigableSet<String> idxDstByLabel;
+    private final NavigableSet<String> idxNodesByProp;
 
     private GraphStore(DB db,
-                       BTreeMap<String, NodeBlob> nodes,
-                       BTreeMap<String, EdgeBlob> edges,
-                       NavigableSet<String> index) {
+                       HTreeMap<String, NodeBlob> nodes,
+                       HTreeMap<String, EdgeBlob> edges,
+                       NavigableSet<String> idxEdgeIdsByLabel,
+                       NavigableSet<String> idxSrcByLabel,
+                       NavigableSet<String> idxDstByLabel,
+                       NavigableSet<String> idxNodesByProp) {
         this.db = db;
         this.nodes = nodes;
         this.edges = edges;
-        this.index = index;
+        this.idxEdgeIdsByLabel = idxEdgeIdsByLabel;
+        this.idxSrcByLabel = idxSrcByLabel;
+        this.idxDstByLabel = idxDstByLabel;
+        this.idxNodesByProp = idxNodesByProp;
     }
 
     public static GraphStore open(Path file) {
         file.toFile().getParentFile().mkdirs();
+
         DB db = DBMaker.fileDB(file.toFile())
                 .fileMmapEnableIfSupported()
-                .transactionEnable()            // transaccional; commit() explícito
-                .concurrencyScale(16)
                 .closeOnJvmShutdown()
+                .concurrencyScale(16)
+                // .transactionEnable() 
                 .make();
 
-        BTreeMap<String, NodeBlob> nodes = db.treeMap(CF_NODES, Serializer.STRING, Serializer.JAVA).createOrOpen();
-        BTreeMap<String, EdgeBlob> edges = db.treeMap(CF_EDGES, Serializer.STRING, Serializer.JAVA).createOrOpen();
-        NavigableSet<String> index = db.treeSet(CF_INDEX, Serializer.STRING).createOrOpen();
+        HTreeMap<String, NodeBlob> nodes = db.hashMap(CF_NODES, Serializer.STRING, Serializer.JAVA).createOrOpen();
+        HTreeMap<String, EdgeBlob> edges = db.hashMap(CF_EDGES, Serializer.STRING, Serializer.JAVA).createOrOpen();
 
-        return new GraphStore(db, nodes, edges, index);
+        NavigableSet<String> idxEdgeIdsByLabel = db.treeSet(IDX_EDGEIDS_BY_LABEL, Serializer.STRING).createOrOpen();
+        NavigableSet<String> idxSrcByLabel     = db.treeSet(IDX_SRC_BY_LABEL,     Serializer.STRING).createOrOpen();
+        NavigableSet<String> idxDstByLabel     = db.treeSet(IDX_DST_BY_LABEL,     Serializer.STRING).createOrOpen();
+        NavigableSet<String> idxNodesByProp    = db.treeSet(IDX_NODES_BY_PROP,    Serializer.STRING).createOrOpen();
+
+        return new GraphStore(db, nodes, edges, idxEdgeIdsByLabel, idxSrcByLabel, idxDstByLabel, idxNodesByProp);
     }
 
     @Override
@@ -58,7 +79,7 @@ public class GraphStore implements AutoCloseable {
         try { db.close(); } catch (Exception ignore) {}
     }
 
-
+    // ===== blobs =====
     public static final class NodeBlob implements Serializable {
         @Serial private static final long serialVersionUID = 1L;
         public final String label;
@@ -81,31 +102,28 @@ public class GraphStore implements AutoCloseable {
         @Override public String toString() { return "EdgeBlob{label="+label+", src="+src+", dst="+dst+"}"; }
     }
 
-
-    private static String keyNode(String nodeId) { return "node:" + nodeId; }
-    private static String keyEdge(String edgeId) { return "edge:" + edgeId; }
-
-    private static String idxKey(String... parts) {
-        StringBuilder sb = new StringBuilder("idx");
-        for (String p : parts) {
-            sb.append(SEP).append(p);
-        }
-        return sb.toString();
+    // ===== helpers =====
+    private static String kEdgeIdsByLabel(String label, String edgeId) {
+        return label + SEP + edgeId;
     }
-    private static String idxPrefix(String... parts) {
-        return idxKey(parts); 
+    private static String kSrcByLabel(String label, String src) {
+        return label + SEP + src;
     }
-    private static String suffixAfterPrefix(String key, String prefix) {
-        int start = prefix.length();
-        if (start < key.length() && key.charAt(start) == SEP) start++;
-        return key.substring(start);
+    private static String kDstByLabel(String label, String dst) {
+        return label + SEP + dst;
+    }
+    private static String kNodesByProp(String prop, String valLower, String nodeId) {
+        return prop + SEP + valLower + SEP + nodeId;
     }
     private static String norm(String s) { return s.toLowerCase(Locale.ROOT); }
 
+    // ===== ingest =====
     public void ingestNodes(Path nodesPgdf) throws IOException {
         try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8)) {
             String line; String[] header = null;
             long written = 0;
+            final long BATCH = 100_000; 
+
             while ((line = br.readLine()) != null) {
                 if (line.isBlank()) continue;
                 if (line.startsWith("@")) {
@@ -127,20 +145,18 @@ public class GraphStore implements AutoCloseable {
                     String k = e.getKey();
                     if ("@id".equals(k) || "@label".equals(k)) continue;
                     String v = e.getValue()==null? "" : e.getValue();
-                    props.put(k, v);
+                    if (!v.isEmpty()) props.put(k, v);
                 }
 
-                // Guardar nodo
-                nodes.put(keyNode(nodeId), new NodeBlob(label, props));
+                nodes.put(nodeId, new NodeBlob(label, props));
 
-                // Índice por propiedad (igualdad exacta, case-insensitive)
                 for (var e : props.entrySet()) {
                     String val = e.getValue();
                     if (val == null || val.isEmpty()) continue;
-                    index.add(idxKey("prop", e.getKey(), norm(val), nodeId));
+                    idxNodesByProp.add(kNodesByProp(e.getKey(), norm(val), nodeId));
                 }
 
-                if ((++written % 10_000) == 0) db.commit(); // commits periódicos
+                if ((++written % BATCH) == 0) db.commit();
             }
             db.commit();
         }
@@ -150,6 +166,8 @@ public class GraphStore implements AutoCloseable {
         try (BufferedReader br = Files.newBufferedReader(edgesPgdf, StandardCharsets.UTF_8)) {
             String line; String[] header = null;
             long written = 0;
+            final long BATCH = 200_000;
+
             while ((line = br.readLine()) != null) {
                 if (line.isBlank()) continue;
                 if (line.startsWith("@")) {
@@ -172,13 +190,13 @@ public class GraphStore implements AutoCloseable {
 
                 if (edgeId.isEmpty()) edgeId = makeEdgeId(src, label, dst);
 
-                edges.put(keyEdge(edgeId), new EdgeBlob(label, src, dst));
+                edges.put(edgeId, new EdgeBlob(label, src, dst));
 
-                index.add(idxKey("label", "edge",     label, edgeId));
-                index.add(idxKey("label", "srcnodes", label, src));
-                index.add(idxKey("label", "dstnodes", label, dst));
+                idxEdgeIdsByLabel.add(kEdgeIdsByLabel(label, edgeId));
+                idxSrcByLabel.add(kSrcByLabel(label, src));
+                idxDstByLabel.add(kDstByLabel(label, dst));
 
-                if ((++written % 20_000) == 0) db.commit();
+                if ((++written % BATCH) == 0) db.commit();
             }
             db.commit();
         }
@@ -191,45 +209,52 @@ public class GraphStore implements AutoCloseable {
         return Long.toUnsignedString(x);
     }
 
-    public NodeBlob getNode(String nodeId) {
-        return nodes.get(keyNode(nodeId));
-    }
-    public EdgeBlob getEdge(String edgeId) {
-        return edges.get(keyEdge(edgeId));
-    }
+    // ===== gets =====
+    public NodeBlob getNode(String nodeId) { return nodes.get(nodeId); }
+    public EdgeBlob getEdge(String edgeId) { return edges.get(edgeId); }
 
     public void forEachEdgeIdByLabel(String label, Consumer<String> edgeIdConsumer) {
-        final String prefix = idxPrefix("label","edge",label);
-        for (String k : index.tailSet(prefix, true)) {
-            if (!k.startsWith(prefix)) break;
-            String edgeId = suffixAfterPrefix(k, prefix);
+        final String prefix = label + SEP;
+        var range = idxEdgeIdsByLabel.subSet(prefix, true, prefix + UPPER, true);
+        for (String k : range) {
+            int p = k.indexOf(SEP);
+            if (p < 0 || p+1 >= k.length()) continue;
+            String edgeId = k.substring(p+1);
             edgeIdConsumer.accept(edgeId);
         }
     }
 
     public void forEachSourceNodeByLabel(String label, Consumer<String> nodeIdConsumer) {
-        final String prefix = idxPrefix("label","srcnodes",label);
-        for (String k : index.tailSet(prefix, true)) {
-            if (!k.startsWith(prefix)) break;
-            String nodeId = suffixAfterPrefix(k, prefix);
+        final String prefix = label + SEP;
+        var range = idxSrcByLabel.subSet(prefix, true, prefix + UPPER, true);
+        for (String k : range) {
+            int p = k.indexOf(SEP);
+            if (p < 0 || p+1 >= k.length()) continue;
+            String nodeId = k.substring(p+1);
             nodeIdConsumer.accept(nodeId);
         }
     }
 
     public void forEachDestinationNodeByLabel(String label, Consumer<String> nodeIdConsumer) {
-        final String prefix = idxPrefix("label","dstnodes",label);
-        for (String k : index.tailSet(prefix, true)) {
-            if (!k.startsWith(prefix)) break;
-            String nodeId = suffixAfterPrefix(k, prefix);
+        final String prefix = label + SEP;
+        var range = idxDstByLabel.subSet(prefix, true, prefix + UPPER, true);
+        for (String k : range) {
+            int p = k.indexOf(SEP);
+            if (p < 0 || p+1 >= k.length()) continue;
+            String nodeId = k.substring(p+1);
             nodeIdConsumer.accept(nodeId);
         }
     }
 
     public void forEachNodeByPropertyEquals(String propName, String propValue, Consumer<String> nodeIdConsumer) {
-        final String prefix = idxPrefix("prop", propName, norm(propValue));
-        for (String k : index.tailSet(prefix, true)) {
-            if (!k.startsWith(prefix)) break;
-            String nodeId = suffixAfterPrefix(k, prefix);
+        final String prefix = propName + SEP + norm(propValue) + SEP;
+        var range = idxNodesByProp.subSet(prefix, true, prefix + UPPER, true);
+        for (String k : range) {
+            int p1 = k.indexOf(SEP);
+            if (p1 < 0) continue;
+            int p2 = k.indexOf(SEP, p1+1);
+            if (p2 < 0 || p2+1 >= k.length()) continue;
+            String nodeId = k.substring(p2+1);
             nodeIdConsumer.accept(nodeId);
         }
     }

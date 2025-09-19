@@ -34,10 +34,14 @@ public class SparkseeImplementation2 {
     public static void main(String[] args) throws Exception {
         if (args.length < 3) {
             System.err.println(
-                "Usage:\n" +
-                "  Save:  java -cp sparkseejava.jar:. SparkseeImplementation -n Nodes.pgdf -e Edges.pgdf -d graph.gdb\n" +
-                "  GetN:  java -cp sparkseejava.jar:. SparkseeImplementation -d graph.gdb -g <ext_id>\n" +
-                "  GetE*: java -cp sparkseejava.jar:. SparkseeImplementation -d graph.gdb -gel <edge_label>");
+                    "Usage:\n" +
+                            "  Save:  java -cp sparkseejava.jar:. SparkseeImplementation -n Nodes.pgdf -e Edges.pgdf -d graph.gdb\n"
+                            +
+                            "  GetNodeById:  java -cp sparkseejava.jar:. SparkseeImplementation -d graph.gdb -g <ext_id>\n"
+                            +
+                            "  GetEdgesIdsByLabel: java -cp sparkseejava.jar:. SparkseeImplementation -d graph.gdb -gel <edge_label>\n"
+                            +
+                            "  FindNodesByAtrributeValue: java -cp sparkseejava.jar:. SparkseeImplementation -d graph.gdb -nv \"<Type>:<attr>=<value>\"\n");
             System.exit(1);
         }
 
@@ -69,6 +73,12 @@ public class SparkseeImplementation2 {
             System.out.println("Done.");
             return;
         }
+        if (params.containsKey("-d") && params.containsKey("-nv")) {
+            System.out.println("Querying nodes by attribute value...");
+            app.runFindNodesByAttrAcrossTypes(params.get("-d"), params.get("-nv"));
+            System.out.println("Done.");
+            return;
+        }
 
         System.out.println("Invalid arguments.");
     }
@@ -97,8 +107,10 @@ public class SparkseeImplementation2 {
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            if (sess != null) sess.close();
-            if (db != null) db.close();
+            if (sess != null)
+                sess.close();
+            if (db != null)
+                db.close();
             sparksee.close();
         }
     }
@@ -121,8 +133,10 @@ public class SparkseeImplementation2 {
             getWantedNode(wantedId, sess, g);
 
         } finally {
-            if (sess != null) sess.close();
-            if (db != null) db.close();
+            if (sess != null)
+                sess.close();
+            if (db != null)
+                db.close();
             sparksee.close();
         }
     }
@@ -144,8 +158,10 @@ public class SparkseeImplementation2 {
             printEdgeIdsByLabel(sess, g, edgeLabel);
 
         } finally {
-            if (sess != null) sess.close();
-            if (db != null) db.close();
+            if (sess != null)
+                sess.close();
+            if (db != null)
+                db.close();
             sparksee.close();
         }
     }
@@ -200,7 +216,10 @@ public class SparkseeImplementation2 {
             System.out.printf("Total edges: %d (%.2f ms)%n", total, (t1 - t0) / 1_000_000.0);
             sess.commit();
         } catch (RuntimeException e) {
-            try { sess.rollback(); } catch (Exception ignore) {}
+            try {
+                sess.rollback();
+            } catch (Exception ignore) {
+            }
             throw e;
         }
     }
@@ -247,7 +266,8 @@ public class SparkseeImplementation2 {
                                 sb.append(buf, 0, n);
                             }
                             String s = sb.toString();
-                            if (s.length() > 512) s = s.substring(0, 512) + "…";
+                            if (s.length() > 512)
+                                s = s.substring(0, 512) + "…";
                             System.out.println(name + " (TEXT) = " + s);
                         }
                     }
@@ -259,26 +279,41 @@ public class SparkseeImplementation2 {
 
                 String out;
                 switch (dt) {
-                    case Boolean:   out = Boolean.toString(val.getBoolean()); break;
-                    case Integer:   out = Integer.toString(val.getInteger()); break;
-                    case Long:      out = Long.toString(val.getLong()); break;
-                    case Double:    out = Double.toString(val.getDouble()); break;
-                    case Timestamp: out = new java.util.Date(val.getLong()).toString(); break;
-                    case OID:       out = Long.toString(val.getOID()); break;
+                    case Boolean:
+                        out = Boolean.toString(val.getBoolean());
+                        break;
+                    case Integer:
+                        out = Integer.toString(val.getInteger());
+                        break;
+                    case Long:
+                        out = Long.toString(val.getLong());
+                        break;
+                    case Double:
+                        out = Double.toString(val.getDouble());
+                        break;
+                    case Timestamp:
+                        out = new java.util.Date(val.getLong()).toString();
+                        break;
+                    case OID:
+                        out = Long.toString(val.getOID());
+                        break;
                     case String:
-                    default:        out = val.getString();
+                    default:
+                        out = val.getString();
                 }
                 System.out.println(name + " = " + out);
             }
-                        endTime = System.nanoTime();
+            endTime = System.nanoTime();
             System.out.printf("Time 4 (%.2f ms):%n", (endTime - startTime) / 1_000_000.0);
             sess.commit();
         } catch (RuntimeException e) {
-            try { sess.rollback(); } catch (Exception ignore) {}
+            try {
+                sess.rollback();
+            } catch (Exception ignore) {
+            }
             throw e;
         }
     }
-
 
     private void loadNodes(Session sess, Graph g, Path nodesFile) throws IOException {
         try (BufferedReader br = Files.newBufferedReader(nodesFile, StandardCharsets.UTF_8)) {
@@ -290,12 +325,14 @@ public class SparkseeImplementation2 {
             sess.beginUpdate();
 
             while ((line = br.readLine()) != null) {
-                if (line.isEmpty()) continue;
+                if (line.isEmpty())
+                    continue;
                 if (line.startsWith("@id|")) {
                     header = line.split("\\|", -1);
                     continue;
                 }
-                if (header == null) continue;
+                if (header == null)
+                    continue;
 
                 String[] cols = line.split("\\|", -1);
                 if (cols.length != header.length) {
@@ -305,8 +342,10 @@ public class SparkseeImplementation2 {
 
                 String label = null, extId = null;
                 for (int i = 0; i < header.length; i++) {
-                    if ("@label".equals(header[i])) label = cols[i];
-                    else if ("@id".equals(header[i])) extId = cols[i];
+                    if ("@label".equals(header[i]))
+                        label = cols[i];
+                    else if ("@id".equals(header[i]))
+                        extId = cols[i];
                 }
                 if (label == null || extId == null || label.isEmpty() || extId.isEmpty()) {
                     System.err.println("Fila sin @id/@label (saltando): " + line);
@@ -320,9 +359,11 @@ public class SparkseeImplementation2 {
 
                 for (int i = 0; i < header.length; i++) {
                     String name = header[i];
-                    if (name.equals("@id") || name.equals("@label")) continue;
+                    if (name.equals("@id") || name.equals("@label"))
+                        continue;
                     String val = cols[i];
-                    if (val == null || val.isEmpty()) continue;
+                    if (val == null || val.isEmpty())
+                        continue;
 
                     DataType dt = guessType(name);
                     int attrId = ensureAttribute(g, typeId, name, dt, AttributeKind.Basic);
@@ -356,35 +397,38 @@ public class SparkseeImplementation2 {
     private void loadEdges(Session sess, Graph g, Path edgesFile) throws IOException {
         try (BufferedReader br = Files.newBufferedReader(edgesFile, StandardCharsets.UTF_8)) {
             String line = br.readLine();
-            if (line == null) return;
+            if (line == null)
+                return;
 
             String[] header = line.split("\\|", -1);
             Map<String, Integer> idx = new HashMap<>();
-            for (int i = 0; i < header.length; i++) idx.put(header[i], i);
+            for (int i = 0; i < header.length; i++)
+                idx.put(header[i], i);
 
             int count = 0;
             Value v = new Value();
             sess.beginUpdate();
 
             while ((line = br.readLine()) != null) {
-                if (line.isEmpty()) continue;
+                if (line.isEmpty())
+                    continue;
                 String[] cols = line.split("\\|", -1);
                 if (cols.length != header.length) {
                     System.err.println("Arista con columnas inválidas (saltando): " + line);
                     continue;
                 }
 
-                String eid   = idx.containsKey("@id") ? cols[idx.get("@id")] : null;
+                String eid = idx.containsKey("@id") ? cols[idx.get("@id")] : null;
                 String label = cols[idx.get("@label")];
-                String dir   = cols[idx.get("@dir")];
-                String outExt= cols[idx.get("@out")];
+                String dir = cols[idx.get("@dir")];
+                String outExt = cols[idx.get("@out")];
                 String inExt = cols[idx.get("@in")];
 
                 boolean directed = !"F".equalsIgnoreCase(dir);
                 int edgeType = ensureEdgeType(g, label, directed);
 
                 Long outOid = oidByExtId.get(outExt);
-                Long inOid  = oidByExtId.get(inExt);
+                Long inOid = oidByExtId.get(inExt);
                 if (outOid == null || inOid == null) {
                     System.err.println("No se encontró nodo para arista (saltando): " + line);
                     continue;
@@ -412,10 +456,260 @@ public class SparkseeImplementation2 {
         }
     }
 
+    private void runFindNodesByAttrValue(String dbPath, String spec) throws Exception {
+        // spec format: "<Type>:<attr>=<value>"
+        int colon = spec.indexOf(':');
+        int eq = spec.indexOf('=', colon + 1);
+        if (colon <= 0 || eq <= colon + 1 || eq == spec.length() - 1) {
+            throw new IllegalArgumentException("Invalid -nv format. Use \"<Type>:<attr>=<value>\"");
+        }
+
+        String typeName = spec.substring(0, colon).trim();
+        String attrName = spec.substring(colon + 1, eq).trim();
+        String rawValue = spec.substring(eq + 1).trim();
+
+        SparkseeConfig cfg = new SparkseeConfig("sparksee.cfg");
+        Sparksee sparksee = new Sparksee(cfg);
+        Database db = null;
+        Session sess = null;
+
+        try {
+            System.out.println("Loading graph from " + dbPath);
+            db = sparksee.open(dbPath, true);
+            db.disableRollback();
+            sess = db.newSession();
+            Graph g = sess.getGraph();
+            System.out.println("Graph loaded from " + dbPath);
+
+            // check type and attribute
+            int typeId = g.findType(typeName);
+            if (typeId == Type.InvalidType) {
+                System.out.println("Node type not found: " + typeName);
+                return;
+            }
+            int attrId = g.findAttribute(typeId, attrName);
+            if (attrId == Attribute.InvalidAttribute) {
+                System.out.println("Attribute '" + attrName + "' not found on type '" + typeName + "'");
+                return;
+            }
+
+            Attribute meta = g.getAttribute(attrId);
+            DataType dt = meta.getDataType();
+
+            // Prepare Value with proper type
+            Value v = new Value();
+            try {
+                switch (dt) {
+                    case Integer:
+                        v.setInteger(Integer.parseInt(rawValue));
+                        break;
+                    case Long:
+                        v.setLong(Long.parseLong(rawValue));
+                        break;
+                    case Double:
+                        v.setDouble(Double.parseDouble(rawValue));
+                        break;
+                    case Boolean:
+                        v.setBoolean(Boolean.parseBoolean(rawValue));
+                        break;
+                    default:
+                        v.setString(rawValue);
+                        break;
+                }
+            } catch (NumberFormatException nfe) {
+                v.setString(rawValue);
+            }
+
+            sess.begin();
+            long t0 = System.nanoTime();
+
+            // Select all objects whose <attrName> == <value>
+            com.sparsity.sparksee.gdb.Objects results = g.select(attrId, Condition.Equal, v);
+
+            long total = 0;
+            com.sparsity.sparksee.gdb.ObjectsIterator it = results.iterator();
+            try {
+                int extAttr = (extIdAttr != Attribute.InvalidAttribute)
+                        ? extIdAttr
+                        : g.findAttribute(Type.NodesType, "ext_id");
+
+                Value out = new Value();
+                while (it.hasNext()) {
+                    long oid = it.next();
+                    System.out.print("OID=" + oid);
+
+                    if (extAttr != Attribute.InvalidAttribute) {
+                        g.getAttribute(oid, extAttr, out);
+                        if (!out.isNull())
+                            System.out.print("  ext_id=" + out.getString());
+                    }
+                    System.out.println();
+                    total++;
+                }
+            } finally {
+                it.close();
+                results.close();
+            }
+
+            long t1 = System.nanoTime();
+            System.out.printf("Matched %d nodes (%.2f ms)%n", total, (t1 - t0) / 1_000_000.0);
+            sess.commit();
+
+        } catch (RuntimeException e) {
+            try {
+                if (sess != null)
+                    sess.rollback();
+            } catch (Exception ignore) {
+            }
+            throw e;
+        } finally {
+            if (sess != null)
+                sess.close();
+            if (db != null)
+                db.close();
+            sparksee.close();
+        }
+    }
+
+    private void runFindNodesByAttrAcrossTypes(String dbPath, String spec) throws Exception {
+    // spec: "<attr>=<value>" or "<attr>:<value>"
+    String attrName, rawValue;
+    int sep = spec.indexOf('=');
+    if (sep < 0) sep = spec.indexOf(':');
+    if (sep <= 0 || sep == spec.length() - 1) {
+        throw new IllegalArgumentException("Invalid -nvx. Use \"<attr>=<value>\" (or attr:value)");
+    }
+    attrName = spec.substring(0, sep).trim();
+    rawValue = spec.substring(sep + 1).trim();
+
+    SparkseeConfig cfg = new SparkseeConfig("sparksee.cfg");
+    Sparksee sparksee = new Sparksee(cfg);
+    Database db = null;
+    Session sess = null;
+
+    try {
+        db = sparksee.open(dbPath, true);
+        db.disableRollback();
+        sess = db.newSession();
+        Graph g = sess.getGraph();
+
+        if (extIdAttr == Attribute.InvalidAttribute) {
+            extIdAttr = g.findAttribute(Type.NodesType, "ext_id"); // optional pretty print
+        }
+
+        sess.begin();
+        long t0 = System.nanoTime();
+
+        com.sparsity.sparksee.gdb.Objects acc = null;
+
+        // ✅ Iterate only node types
+        TypeList tlist = g.findNodeTypes();
+        TypeListIterator tIt = tlist.iterator();
+        while (tIt.hasNext()) {
+            int typeId = tIt.next();
+
+            int attrId = g.findAttribute(typeId, attrName);
+            if (attrId == Attribute.InvalidAttribute) continue;
+
+            Attribute meta = g.getAttribute(attrId);
+            DataType dt = meta.getDataType();
+
+            Value v = new Value();
+            if (!setValueForType(v, dt, rawValue)) continue;
+
+            com.sparsity.sparksee.gdb.Objects part = g.select(attrId, Condition.Equal, v);
+
+            if (acc == null) {
+                acc = part; // take ownership
+            } else {
+                com.sparsity.sparksee.gdb.Objects tmp =
+                        com.sparsity.sparksee.gdb.Objects.combineUnion(acc, part);
+                acc.close();
+                part.close();
+                acc = tmp;
+            }
+        }
+        // (no tlist.close())
+
+        long total = 0;
+        if (acc != null) {
+            com.sparsity.sparksee.gdb.ObjectsIterator it = acc.iterator();
+            try {
+                Value out = new Value();
+                while (it.hasNext()) {
+                    long oid = it.next();
+                    int tId = g.getObjectType(oid);
+                    String tName = g.getType(tId).getName();
+
+                    System.out.print("OID=" + oid + "  type=" + tName);
+                    if (extIdAttr != Attribute.InvalidAttribute) {
+                        g.getAttribute(oid, extIdAttr, out);
+                        if (!out.isNull()) System.out.print("  ext_id=" + out.getString());
+                    }
+                    System.out.println();
+                    total++;
+                }
+            } finally {
+                it.close();
+                acc.close();
+            }
+        }
+
+        long t1 = System.nanoTime();
+        System.out.printf("Matched %d nodes across all types (%.2f ms)%n",
+                total, (t1 - t0) / 1_000_000.0);
+        sess.commit();
+
+    } catch (RuntimeException e) {
+        try { if (sess != null) sess.rollback(); } catch (Exception ignore) {}
+        throw e;
+    } finally {
+        if (sess != null) sess.close();
+        if (db != null) db.close();
+        sparksee.close();
+    }
+}
+
+
+    private static boolean setValueForType(Value v, DataType dt, String raw) {
+        try {
+            switch (dt) {
+                case Integer:
+                    v.setInteger(Integer.parseInt(raw));
+                    return true;
+                case Long:
+                    v.setLong(Long.parseLong(raw));
+                    return true;
+                case Double:
+                    v.setDouble(Double.parseDouble(raw));
+                    return true;
+                case Boolean:
+                    v.setBoolean(Boolean.parseBoolean(raw));
+                    return true;
+                case Timestamp:
+                    v.setLong(Long.parseLong(raw));
+                    return true;
+                case OID:
+                    v.setOID(Long.parseLong(raw));
+                    return true;
+                case String:
+                    v.setString(raw);
+                    return true;
+                case Text:
+                    return false;
+                default:
+                    v.setString(raw);
+                    return true;
+            }
+        } catch (NumberFormatException nfe) {
+            return dt == DataType.String;
+        }
+    }
 
     private int ensureNodeType(Graph g, String label) {
         Integer cached = nodeTypeIds.get(label);
-        if (cached != null) return cached;
+        if (cached != null)
+            return cached;
 
         int type = g.findType(label);
         if (type == Type.InvalidType) {
@@ -427,7 +721,8 @@ public class SparkseeImplementation2 {
 
     private int ensureEdgeType(Graph g, String label, boolean directed) {
         Integer cached = edgeTypeIds.get(label);
-        if (cached != null) return cached;
+        if (cached != null)
+            return cached;
 
         int type = g.findType(label);
         if (type == Type.InvalidType) {
@@ -448,7 +743,8 @@ public class SparkseeImplementation2 {
     private int ensureAttribute(Graph g, int parentType, String name, DataType dt, AttributeKind kind) {
         Map<String, Integer> amap = attrsByType.computeIfAbsent(parentType, k -> new HashMap<>());
         Integer cached = amap.get(name);
-        if (cached != null) return cached;
+        if (cached != null)
+            return cached;
 
         int attr = g.findAttribute(parentType, name);
         if (attr == Attribute.InvalidAttribute) {
