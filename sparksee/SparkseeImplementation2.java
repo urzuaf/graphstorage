@@ -649,7 +649,7 @@ public class SparkseeImplementation2 {
                     System.out.print("OID=" + oid + "  type=" + tName);
                     if (extIdAttr != Attribute.InvalidAttribute) {
                         g.getAttribute(oid, extIdAttr, out);
-                        if (!out.isNull()) System.out.print("  ext_id=" + out.getString());
+                        if (!out.isNull() && total < 10) System.out.print("  ext_id=" + out.getString());
                     }
                     System.out.println();
                     total++;
