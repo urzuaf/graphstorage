@@ -1,0 +1,3 @@
+Manifest-Version: 1.0
+Main-Class: SparkseeImplementation2
+Class-Path: sparkseejava.jar
