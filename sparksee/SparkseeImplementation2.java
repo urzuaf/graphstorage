@@ -240,13 +240,10 @@ public class SparkseeImplementation2 {
 
     private void printNodeByExtId(Session sess, Graph g, String extId) {
         System.out.println("searching node ext_id='" + extId + "' ...");
-        long startTime = System.nanoTime();
         sess.begin();
         try {
             Value v = new Value();
             long oid = g.findObject(extIdAttr, v.setString(extId));
-            long endTime = System.nanoTime();
-            System.out.printf("TIME 1 (%.2f ms):%n", (endTime - startTime) / 1_000_000.0);
             if (oid == InvalidOID) {
                 System.out.println("Not found.");
                 sess.commit();
@@ -257,12 +254,8 @@ public class SparkseeImplementation2 {
             Type t = g.getType(typeId);
             System.out.println("=== Nodo " + extId + " (OID=" + oid + ", tipo=" + t.getName() + ") ===");
 
-            endTime = System.nanoTime();
-            System.out.printf("Time 2 (%.2f ms)\n", (endTime - startTime) / 1_000_000.0);
 
             AttributeList attrs = g.getAttributes(oid);
-            endTime = System.nanoTime();
-            System.out.printf("Time (%.2f ms):%n", (endTime - startTime) / 1_000_000.0);
             for (Integer attrId : attrs) {
                 Attribute meta = g.getAttribute(attrId);
                 String name = meta.getName();
@@ -317,8 +310,6 @@ public class SparkseeImplementation2 {
                 }
                 System.out.println(name + " = " + out);
             }
-            endTime = System.nanoTime();
-            System.out.printf("Time 4 (%.2f ms):%n", (endTime - startTime) / 1_000_000.0);
             sess.commit();
         } catch (RuntimeException e) {
             try {
