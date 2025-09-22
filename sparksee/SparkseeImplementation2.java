@@ -54,28 +54,42 @@ public class SparkseeImplementation2 {
         }
 
         SparkseeImplementation2 app = new SparkseeImplementation2();
+        long startTime;
+        long endTime;
 
         if (params.containsKey("-n") && params.containsKey("-e") && params.containsKey("-d")) {
             System.out.println("Saving graph...");
+            startTime = System.currentTimeMillis();
             app.runIngest(params.get("-n"), params.get("-e"), params.get("-d"));
+            endTime = System.currentTimeMillis();
+            System.out.printf("Time: %.2f seconds%n", (endTime - startTime) / 1000.0);
             System.out.println("Graph saved.");
             return;
         }
         if (params.containsKey("-d") && params.containsKey("-g")) {
             System.out.println("Querying node...");
+            startTime = System.currentTimeMillis();
             app.runGetNode(params.get("-d"), params.get("-g"));
+            endTime = System.currentTimeMillis();
+            System.out.printf("Time: %.2f seconds%n", (endTime - startTime) / 1000.0);
             System.out.println("Done.");
             return;
         }
         if (params.containsKey("-d") && params.containsKey("-gel")) {
             System.out.println("Querying edge IDs by label...");
+            startTime = System.currentTimeMillis();
             app.runGetEdgeIdsByLabel(params.get("-d"), params.get("-gel"));
+            endTime = System.currentTimeMillis();
+            System.out.printf("Time: %.2f seconds%n", (endTime - startTime) / 1000.0);
             System.out.println("Done.");
             return;
         }
         if (params.containsKey("-d") && params.containsKey("-nv")) {
             System.out.println("Querying nodes by attribute value...");
+            startTime = System.currentTimeMillis();
             app.runFindNodesByAttrAcrossTypes(params.get("-d"), params.get("-nv"));
+            endTime = System.currentTimeMillis();
+            System.out.printf("Time: %.2f seconds%n", (endTime - startTime) / 1000.0);
             System.out.println("Done.");
             return;
         }
