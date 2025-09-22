@@ -59,37 +59,25 @@ public class SparkseeImplementation2 {
 
         if (params.containsKey("-n") && params.containsKey("-e") && params.containsKey("-d")) {
             System.out.println("Saving graph...");
-            startTime = System.nanoTime();
             app.runIngest(params.get("-n"), params.get("-e"), params.get("-d"));
-            endTime = System.nanoTime();
-            System.out.printf("Time: %.2f ms %n", (endTime - startTime) / 1_000_000.0);
             System.out.println("Graph saved.");
             return;
         }
         if (params.containsKey("-d") && params.containsKey("-g")) {
             System.out.println("Querying node...");
-            startTime = System.nanoTime();
             app.runGetNode(params.get("-d"), params.get("-g"));
-            endTime = System.nanoTime();
-            System.out.printf("Time: %.2f ms %n", (endTime - startTime) / 1_000_000.0);
             System.out.println("Done.");
             return;
         }
         if (params.containsKey("-d") && params.containsKey("-gel")) {
             System.out.println("Querying edge IDs by label...");
-            startTime = System.nanoTime();
             app.runGetEdgeIdsByLabel(params.get("-d"), params.get("-gel"));
-            endTime = System.nanoTime();
-            System.out.printf("Time: %.2f ms %n", (endTime - startTime) / 1_000_000.0);
             System.out.println("Done.");
             return;
         }
         if (params.containsKey("-d") && params.containsKey("-nv")) {
             System.out.println("Querying nodes by attribute value...");
-            startTime = System.nanoTime();
             app.runFindNodesByAttrAcrossTypes(params.get("-d"), params.get("-nv"));
-            endTime = System.nanoTime();
-            System.out.printf("Time: %.2f ms %n", (endTime - startTime) / 1_000_000.0);
             System.out.println("Done.");
             return;
         }
@@ -142,9 +130,11 @@ public class SparkseeImplementation2 {
             sess = db.newSession();
             Graph g = sess.getGraph();
             System.out.println("Graph loaded from " + dbPath);
-
+            long startTime = System.nanoTime();
             extIdAttr = ensureAttribute(g, Type.NodesType, "ext_id", DataType.String, AttributeKind.Unique);
             getWantedNode(wantedId, sess, g);
+            long endTime = System.nanoTime();
+            System.out.printf("Query time: %.2f ms%n", (endTime - startTime) / 1_000_000.0);
 
         } finally {
             if (sess != null)
@@ -168,8 +158,10 @@ public class SparkseeImplementation2 {
             sess = db.newSession();
             Graph g = sess.getGraph();
             System.out.println("Graph loaded from " + dbPath);
-
+            long startTime = System.nanoTime();
             printEdgeIdsByLabel(sess, g, edgeLabel);
+            long endTime = System.nanoTime();
+            System.out.printf("Query time: %.2f ms%n", (endTime - startTime) / 1_000_000.0);
 
         } finally {
             if (sess != null)
