@@ -237,54 +237,74 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
 }
 
 
-    private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOException, SQLException {
-        String insertEdge = "INSERT INTO edges(id,label,src,dst,directed) VALUES(?,?,?,?,?) " +
-                            "ON CONFLICT (id) DO NOTHING";
-        try (BufferedReader br = Files.newBufferedReader(edgesPgdf, StandardCharsets.UTF_8);
-             PreparedStatement psEdge = cx.prepareStatement(insertEdge)) {
+// Ingesta Edges.pgdf segura (salta headers repetidos y evita FK con INSERT…SELECT…WHERE EXISTS)
+private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOException, SQLException {
+    // Insertar SOLO si existen src y dst en nodes
+    final String insertEdgeIfNodesExist =
+        "INSERT INTO edges(id,label,src,dst,directed) " +
+        "SELECT ?,?,?,?,? " +
+        "WHERE EXISTS (SELECT 1 FROM nodes n1 WHERE n1.id = ?) " +
+        "  AND EXISTS (SELECT 1 FROM nodes n2 WHERE n2.id = ?) " +
+        "ON CONFLICT (id) DO NOTHING";
 
-            String line = br.readLine();
-            if (line == null) return; // vacío
-            String[] header = line.split("\\|", -1);
-            Map<String,Integer> idx = new HashMap<>();
-            for (int i=0;i<header.length;i++) idx.put(header[i], i);
+    try (BufferedReader br = Files.newBufferedReader(edgesPgdf, StandardCharsets.UTF_8);
+         PreparedStatement psEdge = cx.prepareStatement(insertEdgeIfNodesExist)) {
 
-            int eBatch = 0;
-            long eCount = 0;
+        // Leer el primer header
+        String line = br.readLine();
+        if (line == null) return;
+        String[] header = line.split("\\|", -1);
+        Map<String,Integer> idx = new HashMap<>();
+        for (int i=0;i<header.length;i++) idx.put(header[i], i);
 
-            while ((line = br.readLine()) != null) {
-                if (line.isBlank()) continue;
-                String[] cols = line.split("\\|", -1);
+        int eBatch = 0;
+        long eCount = 0;
 
-                String eid  = safe(cols, idx.get("@id"));
-                String lab  = safe(cols, idx.get("@label"));
-                String dir  = safe(cols, idx.get("@dir"));
-                String src  = safe(cols, idx.get("@out"));
-                String dst  = safe(cols, idx.get("@in"));
+        while ((line = br.readLine()) != null) {
+            if (line.isBlank()) continue;
 
-                if (lab.isEmpty() || src.isEmpty() || dst.isEmpty()) continue;
-                boolean directed = !"F".equalsIgnoreCase(dir.isEmpty() ? "T" : dir);
-                if (eid.isEmpty()) eid = makeEdgeId(src, lab, dst);
-
-                psEdge.setString(1, eid);
-                psEdge.setString(2, lab);
-                psEdge.setString(3, src);
-                psEdge.setString(4, dst);
-                psEdge.setBoolean(5, directed);
-                psEdge.addBatch();
-                eBatch++; eCount++;
-
-                if (eBatch >= EDGE_BATCH) {
-                    psEdge.executeBatch();
-                    eBatch = 0;
-                    cx.commit();
-                }
+            // <<< BLINDAJE: si aparece otro header en medio, lo saltamos >>>
+            if (line.startsWith("@")) {
+                // puedes revalidar el header si necesitas: header = line.split("\\|",-1); idx = ...
+                continue;
             }
-            if (eBatch > 0) psEdge.executeBatch();
-            cx.commit();
-            System.out.printf(Locale.ROOT, "  Edges: %,d%n", eCount);
+
+            String[] cols = line.split("\\|", -1);
+
+            String eid  = safe(cols, idx.get("@id"));
+            String lab  = safe(cols, idx.get("@label"));
+            String dir  = safe(cols, idx.get("@dir"));
+            String src  = safe(cols, idx.get("@out"));
+            String dst  = safe(cols, idx.get("@in"));
+
+            if (lab.isEmpty() || src.isEmpty() || dst.isEmpty()) continue;
+            boolean directed = !"F".equalsIgnoreCase(dir.isEmpty() ? "T" : dir);
+            if (eid.isEmpty()) eid = makeEdgeId(src, lab, dst);
+
+            // Bind: valores + src/dst repetidos para los EXISTS
+            psEdge.setString(1, eid);
+            psEdge.setString(2, lab);
+            psEdge.setString(3, src);
+            psEdge.setString(4, dst);
+            psEdge.setBoolean(5, directed);
+            psEdge.setString(6, src); // EXISTS n1
+            psEdge.setString(7, dst); // EXISTS n2
+            psEdge.addBatch();
+            eBatch++; eCount++;
+
+            if (eBatch >= EDGE_BATCH) {
+                psEdge.executeBatch();
+                eBatch = 0;
+                cx.commit();
+            }
         }
+
+        if (eBatch > 0) psEdge.executeBatch();
+        cx.commit();
+        System.out.printf(Locale.ROOT, "  Edges (intentadas): %,d%n", eCount);
     }
+}
+
 
     // ===== Consultas =====
 
