@@ -8,8 +8,8 @@ from typing import Dict, List, Sequence, Tuple
 # CONFIG
 # =========================
 SEED = 1337
-NUM_NODOS = 100_000
-NUM_ARISTAS = 450_000
+NUM_NODOS = 1_000
+NUM_ARISTAS = 4500
 
 OUT_NODES = Path("Nodes.pgdf")
 OUT_EDGES = Path("Edges.pgdf")

@@ -1,0 +1,355 @@
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.sql.*;
+import java.util.*;
+
+public class PgdfToPostgres {
+
+    // Tamaño de lotes para batch inserts (ajusta según memoria/IO)
+    private static final int NODE_BATCH = 20_000;
+    private static final int EDGE_BATCH = 50_000;
+    private static final int PROP_BATCH = 50_000;
+
+    public static void main(String[] args) throws Exception {
+        if (args.length < 4) {
+            usage();
+        }
+
+        String url  = args[0];
+        String user = args[1];
+        String pass = args[2];
+
+        // Modo consultas: el 4º argumento empieza con '-'
+        boolean queryMode = args[3].startsWith("-");
+
+        try (Connection cx = DriverManager.getConnection(url, user, pass)) {
+            // Para COPY/cursores del lado servidor se recomienda autocommit=false
+            cx.setAutoCommit(false);
+
+            if (!queryMode) {
+                // Ingesta: <jdbc> <user> <pass> <Nodes.pgdf> <Edges.pgdf>
+                if (args.length < 5) usage();
+                Path nodesFile = Paths.get(args[3]);
+                Path edgesFile = Paths.get(args[4]);
+
+                ensureSchema(cx);
+
+                long t0 = System.nanoTime();
+                ingestNodes(cx, nodesFile);
+                long t1 = System.nanoTime();
+                ingestEdges(cx, edgesFile);
+                long t2 = System.nanoTime();
+                cx.commit();
+                System.out.printf(Locale.ROOT,
+                        "Ingesta completada%n  nodos: %.3f ms%n  aristas: %.3f ms%n",
+                        (t1 - t0)/1e6, (t2 - t1)/1e6);
+                return;
+            }
+
+            // -------- MODO CONSULTA --------
+            // Formatos:
+            //   -g  <node_id>
+            //   -gl <label>
+            //   -nv <atributo=valor>
+            if (args.length < 5) usage();
+
+            String flag = args[3];
+            switch (flag) {
+                case "-g" -> {
+                    String nodeId = args[4];
+                    queryNodeWithAllProps(cx, nodeId);
+                }
+                case "-gl" -> {
+                    String label = args[4];
+                    queryEdgeIdsByLabel(cx, label);
+                }
+                case "-nv" -> {
+                    String spec = args[4]; // formato: key=valor
+                    int p = spec.indexOf('=');
+                    if (p <= 0 || p == spec.length()-1) {
+                        System.err.println("Formato inválido para -nv. Usa atributo=valor");
+                        System.exit(2);
+                    }
+                    String key = spec.substring(0, p);
+                    String val = spec.substring(p+1);
+                    queryNodesByPropEquals(cx, key, val);
+                }
+                default -> usage();
+            }
+            cx.commit();
+        }
+    }
+
+    private static void usage() {
+        System.err.println("""
+            Uso:
+
+              Ingesta:
+                java -cp postgresql.jar:. PgdfToPostgres <jdbc_url> <user> <pass> <Nodes.pgdf> <Edges.pgdf>
+
+              Consultas:
+                1) Nodo + todas sus propiedades
+                   java -cp postgresql.jar:. PgdfToPostgres <jdbc_url> <user> <pass> -g <node_id>
+
+                2) IDs de aristas por etiqueta
+                   java -cp postgresql.jar:. PgdfToPostgres <jdbc_url> <user> <pass> -gl <label>
+
+                3) Nodos con propiedad=valor (case-insensitive)
+                   java -cp postgresql.jar:. PgdfToPostgres <jdbc_url> <user> <pass> -nv <atributo=valor>
+            """);
+        System.exit(2);
+    }
+
+    // ===== DDL =====
+    private static void ensureSchema(Connection cx) throws SQLException {
+        String ddl =
+            "CREATE TABLE IF NOT EXISTS nodes (" +
+            "  id    TEXT PRIMARY KEY," +
+            "  label TEXT NOT NULL" +
+            ");" +
+            "CREATE TABLE IF NOT EXISTS node_properties (" +
+            "  node_id  TEXT NOT NULL REFERENCES nodes(id)," +
+            "  key      TEXT NOT NULL," +
+            "  value    TEXT NOT NULL," +
+            "  value_lc TEXT NOT NULL" +
+            ");" +
+            "CREATE TABLE IF NOT EXISTS edges (" +
+            "  id       TEXT PRIMARY KEY," +
+            "  label    TEXT NOT NULL," +
+            "  src      TEXT NOT NULL REFERENCES nodes(id)," +
+            "  dst      TEXT NOT NULL REFERENCES nodes(id)," +
+            "  directed BOOLEAN NOT NULL" +
+            ");" +
+            "CREATE TABLE IF NOT EXISTS edge_properties (" +
+            "  edge_id  TEXT NOT NULL REFERENCES edges(id)," +
+            "  key      TEXT NOT NULL," +
+            "  value    TEXT NOT NULL," +
+            "  value_lc TEXT NOT NULL" +
+            ");" +
+            "CREATE INDEX IF NOT EXISTS idx_nodes_label           ON nodes(label);" +
+            "CREATE INDEX IF NOT EXISTS idx_nodeprops_key_vlc     ON node_properties(key, value_lc);" +
+            "CREATE INDEX IF NOT EXISTS idx_edges_label           ON edges(label);" +
+            "CREATE INDEX IF NOT EXISTS idx_edges_label_src       ON edges(label, src);" +
+            "CREATE INDEX IF NOT EXISTS idx_edges_label_dst       ON edges(label, dst);" +
+            "CREATE INDEX IF NOT EXISTS idx_nodeprops_node        ON node_properties(node_id);";
+        try (Statement st = cx.createStatement()) {
+            st.execute(ddl);
+        }
+        cx.commit();
+    }
+
+    // ===== Ingesta =====
+    private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOException, SQLException {
+        String upsertNode = "INSERT INTO nodes(id,label) VALUES(?,?) " +
+                            "ON CONFLICT (id) DO UPDATE SET label=EXCLUDED.label";
+        String insertProp = "INSERT INTO node_properties(node_id,key,value,value_lc) VALUES(?,?,?,?)";
+
+        try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8);
+             PreparedStatement psNode = cx.prepareStatement(upsertNode);
+             PreparedStatement psProp = cx.prepareStatement(insertProp)) {
+
+            String line;
+            String[] header = null;
+            int nBatch = 0, pBatch = 0;
+            long nCount = 0, pCount = 0;
+
+            while ((line = br.readLine()) != null) {
+                if (line.isBlank()) continue;
+                if (line.startsWith("@")) {
+                    header = line.split("\\|", -1);
+                    continue;
+                }
+                if (header == null) continue;
+
+                String[] cols = line.split("\\|", -1);
+                Map<String,String> row = new LinkedHashMap<>();
+                for (int i=0;i<header.length && i<cols.length;i++) row.put(header[i], cols[i]);
+
+                String id = nonNull(row.get("@id")).trim();
+                String label = nonNull(row.get("@label")).trim();
+                if (id.isEmpty() || label.isEmpty()) continue;
+
+                // node
+                psNode.setString(1, id);
+                psNode.setString(2, label);
+                psNode.addBatch();
+                nBatch++; nCount++;
+
+                // props
+                for (var e : row.entrySet()) {
+                    String k = e.getKey();
+                    if ("@id".equals(k) || "@label".equals(k)) continue;
+                    String v = nonNull(e.getValue());
+                    if (v.isEmpty()) continue;
+
+                    psProp.setString(1, id);
+                    psProp.setString(2, k);
+                    psProp.setString(3, v);
+                    psProp.setString(4, v.toLowerCase(Locale.ROOT));
+                    psProp.addBatch();
+                    pBatch++; pCount++;
+
+                    if (pBatch >= PROP_BATCH) {
+                        psProp.executeBatch();
+                        pBatch = 0;
+                    }
+                }
+
+                if (nBatch >= NODE_BATCH) {
+                    psNode.executeBatch();
+                    nBatch = 0;
+                    cx.commit(); // commit por lote (evita crecer el WAL/heap)
+                }
+            }
+            if (nBatch > 0) psNode.executeBatch();
+            if (pBatch > 0) psProp.executeBatch();
+            cx.commit();
+            System.out.printf(Locale.ROOT, "  Nodes: %,d  NodeProps: %,d%n", nCount, pCount);
+        }
+    }
+
+    private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOException, SQLException {
+        String insertEdge = "INSERT INTO edges(id,label,src,dst,directed) VALUES(?,?,?,?,?) " +
+                            "ON CONFLICT (id) DO NOTHING";
+        try (BufferedReader br = Files.newBufferedReader(edgesPgdf, StandardCharsets.UTF_8);
+             PreparedStatement psEdge = cx.prepareStatement(insertEdge)) {
+
+            String line = br.readLine();
+            if (line == null) return; // vacío
+            String[] header = line.split("\\|", -1);
+            Map<String,Integer> idx = new HashMap<>();
+            for (int i=0;i<header.length;i++) idx.put(header[i], i);
+
+            int eBatch = 0;
+            long eCount = 0;
+
+            while ((line = br.readLine()) != null) {
+                if (line.isBlank()) continue;
+                String[] cols = line.split("\\|", -1);
+
+                String eid  = safe(cols, idx.get("@id"));
+                String lab  = safe(cols, idx.get("@label"));
+                String dir  = safe(cols, idx.get("@dir"));
+                String src  = safe(cols, idx.get("@out"));
+                String dst  = safe(cols, idx.get("@in"));
+
+                if (lab.isEmpty() || src.isEmpty() || dst.isEmpty()) continue;
+                boolean directed = !"F".equalsIgnoreCase(dir.isEmpty() ? "T" : dir);
+                if (eid.isEmpty()) eid = makeEdgeId(src, lab, dst);
+
+                psEdge.setString(1, eid);
+                psEdge.setString(2, lab);
+                psEdge.setString(3, src);
+                psEdge.setString(4, dst);
+                psEdge.setBoolean(5, directed);
+                psEdge.addBatch();
+                eBatch++; eCount++;
+
+                if (eBatch >= EDGE_BATCH) {
+                    psEdge.executeBatch();
+                    eBatch = 0;
+                    cx.commit();
+                }
+            }
+            if (eBatch > 0) psEdge.executeBatch();
+            cx.commit();
+            System.out.printf(Locale.ROOT, "  Edges: %,d%n", eCount);
+        }
+    }
+
+    // ===== Consultas =====
+
+    // -g <node_id>
+    private static void queryNodeWithAllProps(Connection cx, String nodeId) throws SQLException {
+        long t0 = System.nanoTime();
+
+        String qNode = "SELECT label FROM nodes WHERE id = ?";
+        String qProps = "SELECT key, value FROM node_properties WHERE node_id = ? ORDER BY key";
+
+        try (PreparedStatement psN = cx.prepareStatement(qNode)) {
+            psN.setString(1, nodeId);
+            try (ResultSet rn = psN.executeQuery()) {
+                if (!rn.next()) {
+                    System.out.println("Node not found: " + nodeId);
+                    return;
+                }
+                String label = rn.getString(1);
+                System.out.println("Node " + nodeId + "  label=" + label);
+            }
+        }
+
+        // Props en streaming
+        try (PreparedStatement psP = cx.prepareStatement(qProps)) {
+            psP.setFetchSize(1000);
+            psP.setString(1, nodeId);
+            long count = 0;
+            try (ResultSet rp = psP.executeQuery()) {
+                while (rp.next()) {
+                    String k = rp.getString(1);
+                    String v = rp.getString(2);
+                    System.out.println("  " + k + " = " + v);
+                    count++;
+                }
+            }
+            long t1 = System.nanoTime();
+            System.out.printf(Locale.ROOT, "Total props: %,d  (%.3f ms)%n", count, (t1 - t0)/1e6);
+        }
+    }
+
+    // -gl <label>
+    private static void queryEdgeIdsByLabel(Connection cx, String label) throws SQLException {
+        long t0 = System.nanoTime();
+        String sql = "SELECT id FROM edges WHERE label = ? ORDER BY id";
+        long count = 0L;
+        // streaming
+        try (PreparedStatement ps = cx.prepareStatement(sql)) {
+            ps.setFetchSize(10_000);
+            ps.setString(1, label);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String id = rs.getString(1);
+                    System.out.println(id);
+                    count++;
+                }
+            }
+        }
+        long t1 = System.nanoTime();
+        System.err.printf(Locale.ROOT, "Total edgeIds: %,d  (%.3f ms)%n", count, (t1 - t0)/1e6);
+    }
+
+    // -nv <atributo=valor>
+    private static void queryNodesByPropEquals(Connection cx, String key, String value) throws SQLException {
+        long t0 = System.nanoTime();
+        String sql = "SELECT node_id FROM node_properties WHERE key = ? AND value_lc = ? ORDER BY node_id";
+        long count = 0L;
+        try (PreparedStatement ps = cx.prepareStatement(sql)) {
+            ps.setFetchSize(10_000);
+            ps.setString(1, key);
+            ps.setString(2, value.toLowerCase(Locale.ROOT));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String id = rs.getString(1);
+                    System.out.println(id);
+                    count++;
+                }
+            }
+        }
+        long t1 = System.nanoTime();
+        System.err.printf(Locale.ROOT, "Total nodes: %,d  (%.3f ms)%n", count, (t1 - t0)/1e6);
+    }
+
+    // ===== Helpers =====
+    private static String nonNull(String s){ return (s == null) ? "" : s; }
+    private static String safe(String[] a, Integer i){
+        if (i == null || i < 0 || i >= a.length) return "";
+        String s = a[i];
+        return s == null ? "" : s;
+    }
+    private static String makeEdgeId(String src, String label, String dst) {
+        String s = src + "|" + label + "|" + dst;
+        long x = 1125899906842597L;
+        for (int i=0;i<s.length();i++) x = (x * 1315423911L) ^ s.charAt(i);
+        return Long.toUnsignedString(x);
+    }
+}
