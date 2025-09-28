@@ -346,46 +346,67 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
     }
 
     // -gl <label>
-    private static void queryEdgeIdsByLabel(Connection cx, String label) throws SQLException {
-        long t0 = System.nanoTime();
-        String sql = "SELECT id FROM edges WHERE label = ? ORDER BY id";
-        long count = 0L;
-        // streaming
-        try (PreparedStatement ps = cx.prepareStatement(sql)) {
-            ps.setFetchSize(10_000);
-            ps.setString(1, label);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
+   // -gl <label>
+private static void queryEdgeIdsByLabel(Connection cx, String label) throws SQLException {
+    long t0 = System.nanoTime();
+    String sql = "SELECT id FROM edges WHERE label = ? ORDER BY id";
+
+    long count = 0L;
+    final long LIMIT_PRINT = 10;
+
+    try (PreparedStatement ps = cx.prepareStatement(sql)) {
+        ps.setFetchSize(10_000);
+        ps.setString(1, label);
+        try (ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                count++;
+                if (count <= LIMIT_PRINT) {
                     String id = rs.getString(1);
                     System.out.println(id);
-                    count++;
                 }
             }
         }
-        long t1 = System.nanoTime();
-        System.err.printf(Locale.ROOT, "Total edgeIds: %,d  (%.3f ms)%n", count, (t1 - t0)/1e6);
     }
 
+    long t1 = System.nanoTime();
+    if (count > LIMIT_PRINT) {
+        System.out.println("… (mostrando solo los primeros " + LIMIT_PRINT + " resultados)");
+    }
+    System.err.printf(Locale.ROOT, "Total edgeIds: %,d  (%.3f ms)%n", count, (t1 - t0)/1e6);
+}
+
+
     // -nv <atributo=valor>
-    private static void queryNodesByPropEquals(Connection cx, String key, String value) throws SQLException {
-        long t0 = System.nanoTime();
-        String sql = "SELECT node_id FROM node_properties WHERE key = ? AND value_lc = ? ORDER BY node_id";
-        long count = 0L;
-        try (PreparedStatement ps = cx.prepareStatement(sql)) {
-            ps.setFetchSize(10_000);
-            ps.setString(1, key);
-            ps.setString(2, value.toLowerCase(Locale.ROOT));
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
+// -nv <atributo=valor>
+private static void queryNodesByPropEquals(Connection cx, String key, String value) throws SQLException {
+    long t0 = System.nanoTime();
+    String sql = "SELECT node_id FROM node_properties WHERE key = ? AND value_lc = ? ORDER BY node_id";
+
+    long count = 0L;
+    final long LIMIT_PRINT = 10;
+
+    try (PreparedStatement ps = cx.prepareStatement(sql)) {
+        ps.setFetchSize(10_000);
+        ps.setString(1, key);
+        ps.setString(2, value.toLowerCase(Locale.ROOT));
+        try (ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                count++;
+                if (count <= LIMIT_PRINT) {
                     String id = rs.getString(1);
                     System.out.println(id);
-                    count++;
                 }
             }
         }
-        long t1 = System.nanoTime();
-        System.err.printf(Locale.ROOT, "Total nodes: %,d  (%.3f ms)%n", count, (t1 - t0)/1e6);
     }
+
+    long t1 = System.nanoTime();
+    if (count > LIMIT_PRINT) {
+        System.out.println("… (mostrando solo los primeros " + LIMIT_PRINT + " resultados)");
+    }
+    System.err.printf(Locale.ROOT, "Total nodes: %,d  (%.3f ms)%n", count, (t1 - t0)/1e6);
+}
+
 
     // ===== Helpers =====
     private static String nonNull(String s){ return (s == null) ? "" : s; }
