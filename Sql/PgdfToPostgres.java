@@ -140,74 +140,102 @@ public class PgdfToPostgres {
     }
 
     // ===== Ingesta =====
-    private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOException, SQLException {
-        String upsertNode = "INSERT INTO nodes(id,label) VALUES(?,?) " +
-                            "ON CONFLICT (id) DO UPDATE SET label=EXCLUDED.label";
-        String insertProp = "INSERT INTO node_properties(node_id,key,value,value_lc) VALUES(?,?,?,?)";
+// Ingesta Nodes.pgdf (Opción B: vaciar batches en orden: NODES -> PROPS)
+private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOException, SQLException {
+    final String upsertNode =
+            "INSERT INTO nodes(id,label) VALUES(?,?) " +
+            "ON CONFLICT (id) DO UPDATE SET label=EXCLUDED.label";
 
-        try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8);
-             PreparedStatement psNode = cx.prepareStatement(upsertNode);
-             PreparedStatement psProp = cx.prepareStatement(insertProp)) {
+    final String insertProp =
+            "INSERT INTO node_properties(node_id,key,value,value_lc) VALUES(?,?,?,?)";
 
-            String line;
-            String[] header = null;
-            int nBatch = 0, pBatch = 0;
-            long nCount = 0, pCount = 0;
+    try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8);
+         PreparedStatement psNode = cx.prepareStatement(upsertNode);
+         PreparedStatement psProp = cx.prepareStatement(insertProp)) {
 
-            while ((line = br.readLine()) != null) {
-                if (line.isBlank()) continue;
-                if (line.startsWith("@")) {
-                    header = line.split("\\|", -1);
-                    continue;
-                }
-                if (header == null) continue;
+        String line;
+        String[] header = null;
 
-                String[] cols = line.split("\\|", -1);
-                Map<String,String> row = new LinkedHashMap<>();
-                for (int i=0;i<header.length && i<cols.length;i++) row.put(header[i], cols[i]);
+        int nBatch = 0;     // pendientes en psNode
+        int pBatch = 0;     // pendientes en psProp
+        long nCount = 0;    // contadores informativos
+        long pCount = 0;
 
-                String id = nonNull(row.get("@id")).trim();
-                String label = nonNull(row.get("@label")).trim();
-                if (id.isEmpty() || label.isEmpty()) continue;
+        while ((line = br.readLine()) != null) {
+            if (line.isBlank()) continue;
 
-                // node
-                psNode.setString(1, id);
-                psNode.setString(2, label);
-                psNode.addBatch();
-                nBatch++; nCount++;
+            if (line.startsWith("@")) {
+                header = line.split("\\|", -1);
+                continue;
+            }
+            if (header == null) continue;
 
-                // props
-                for (var e : row.entrySet()) {
-                    String k = e.getKey();
-                    if ("@id".equals(k) || "@label".equals(k)) continue;
-                    String v = nonNull(e.getValue());
-                    if (v.isEmpty()) continue;
+            String[] cols = line.split("\\|", -1);
+            Map<String,String> row = new LinkedHashMap<>();
+            for (int i = 0; i < header.length && i < cols.length; i++) {
+                row.put(header[i], cols[i]);
+            }
 
-                    psProp.setString(1, id);
-                    psProp.setString(2, k);
-                    psProp.setString(3, v);
-                    psProp.setString(4, v.toLowerCase(Locale.ROOT));
-                    psProp.addBatch();
-                    pBatch++; pCount++;
+            String id    = nonNull(row.get("@id")).trim();
+            String label = nonNull(row.get("@label")).trim();
+            if (id.isEmpty() || label.isEmpty()) continue;
 
-                    if (pBatch >= PROP_BATCH) {
-                        psProp.executeBatch();
-                        pBatch = 0;
+            // --- Acumular nodo ---
+            psNode.setString(1, id);
+            psNode.setString(2, label);
+            psNode.addBatch();
+            nBatch++; nCount++;
+
+            // --- Acumular props ---
+            for (var e : row.entrySet()) {
+                String k = e.getKey();
+                if ("@id".equals(k) || "@label".equals(k)) continue;
+
+                String v = nonNull(e.getValue());
+                if (v.isEmpty()) continue;
+
+                psProp.setString(1, id);
+                psProp.setString(2, k);
+                psProp.setString(3, v);
+                psProp.setString(4, v.toLowerCase(Locale.ROOT));
+                psProp.addBatch();
+                pBatch++; pCount++;
+
+                // Si vamos a vaciar PROPS, primero garantizamos vaciar NODES pendientes
+                if (pBatch >= PROP_BATCH) {
+                    if (nBatch > 0) {
+                        psNode.executeBatch();
+                        nBatch = 0;
                     }
-                }
-
-                if (nBatch >= NODE_BATCH) {
-                    psNode.executeBatch();
-                    nBatch = 0;
-                    cx.commit(); // commit por lote (evita crecer el WAL/heap)
+                    psProp.executeBatch();
+                    pBatch = 0;
+                    cx.commit(); // controla tamaño de WAL y memoria del backend
                 }
             }
-            if (nBatch > 0) psNode.executeBatch();
-            if (pBatch > 0) psProp.executeBatch();
-            cx.commit();
-            System.out.printf(Locale.ROOT, "  Nodes: %,d  NodeProps: %,d%n", nCount, pCount);
+
+            // Si toca vaciar NODES por tamaño, sólo vaciamos nodes aquí
+            if (nBatch >= NODE_BATCH) {
+                psNode.executeBatch();
+                nBatch = 0;
+                cx.commit();
+            }
         }
+
+        // --- Flush final en orden correcto ---
+        if (nBatch > 0) {
+            psNode.executeBatch();
+            nBatch = 0;
+        }
+        if (pBatch > 0) {
+            psProp.executeBatch();
+            pBatch = 0;
+        }
+        cx.commit();
+
+        System.out.printf(Locale.ROOT, "  Nodes: %,d  NodeProps: %,d%n", nCount, pCount);
     }
+}
+
 
     private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOException, SQLException {
         String insertEdge = "INSERT INTO edges(id,label,src,dst,directed) VALUES(?,?,?,?,?) " +
