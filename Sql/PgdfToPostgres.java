@@ -312,18 +312,18 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
         try (PreparedStatement psN = cx.prepareStatement(qProps)) {
             psN.setString(1, nodeId);
             psN.setFetchSize(1000);
-            string label = null;
+            String label = null;
             long count = 0;
 
             try (ResultSet rn = psN.executeQuery()) {
-                while (rs.next()) {
+                while (rn.next()) {
                     if (label == null) {
                         label = rs.getString(1);
                         System.out.println("Node " + nodeId + "  label=" + label);
                         
                     }
-                    String k = rs.getString(2);
-                    String v = rs.getString(3);
+                    String k = rn.getString(2);
+                    String v = rn.getString(3);
                     System.out.println("  " + k + " = " + v);
                     count++;
                 }
