@@ -318,7 +318,7 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
             try (ResultSet rn = psN.executeQuery()) {
                 while (rn.next()) {
                     if (label == null) {
-                        label = rs.getString(1);
+                        label = rn.getString(1);
                         System.out.println("Node " + nodeId + "  label=" + label);
                         
                     }
@@ -332,7 +332,7 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
                 }
             }
            long t1 = System.nanoTime();
-              System.out.printf(Locale.ROOT, "Lookup node: %.3f ms%n", (t1 - t0)/1e6); 
+              System.out.printf(Locale.ROOT, "Total props: %d, Lookup node time: %.3f ms%n",count, (t1 - t0)/1e6); 
         }
         /*/
         // Props en streaming
