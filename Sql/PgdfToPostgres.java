@@ -295,7 +295,7 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
 
         if (eBatch > 0) psEdge.executeBatch();
         cx.commit();
-        System.out.printf(Locale.ROOT, "  Edges (intentadas): %,d%n", eCount);
+        System.out.printf(Locale.ROOT, "  Edges:  %,d%n", eCount);
     }
 }
 
@@ -319,8 +319,10 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
                 String label = rn.getString(1);
                 System.out.println("Node " + nodeId + "  label=" + label);
             }
+           long t1 = System.nanoTime();
+              System.out.printf(Locale.ROOT, "Lookup node: %.3f ms%n", (t1 - t0)/1e6); 
         }
-
+        /*/
         // Props en streaming
         try (PreparedStatement psP = cx.prepareStatement(qProps)) {
             psP.setFetchSize(1000);
@@ -337,6 +339,7 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
             long t1 = System.nanoTime();
             System.out.printf(Locale.ROOT, "Total props: %,d  (%.3f ms)%n", count, (t1 - t0)/1e6);
         }
+            */
     }
 
     // -gl <label>
