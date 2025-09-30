@@ -104,6 +104,7 @@ public class PgdfToPostgres {
             ");" +
             "CREATE TABLE IF NOT EXISTS node_properties (" +
             "  node_id  TEXT NOT NULL REFERENCES nodes(id)," +
+            "  label    TEXT NOT NULL," +
             "  key      TEXT NOT NULL," +
             "  value    TEXT NOT NULL," +
             "  value_lc TEXT NOT NULL" +
@@ -141,7 +142,7 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
             "ON CONFLICT (id) DO UPDATE SET label=EXCLUDED.label";
 
     final String insertProp =
-            "INSERT INTO node_properties(node_id,key,value,value_lc) VALUES(?,?,?,?)";
+            "INSERT INTO node_properties(node_id,label, key,value,value_lc) VALUES(?,?,?,?,?)";
 
     try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8);
          PreparedStatement psNode = cx.prepareStatement(upsertNode);
@@ -189,9 +190,10 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
                 if (v.isEmpty()) continue;
 
                 psProp.setString(1, id);
-                psProp.setString(2, k);
-                psProp.setString(3, v);
-                psProp.setString(4, v.toLowerCase(Locale.ROOT));
+                psProp.setString(2, label);
+                psProp.setString(3, k);
+                psProp.setString(4, v);
+                psProp.setString(5, v.toLowerCase(Locale.ROOT));
                 psProp.addBatch();
                 pBatch++; pCount++;
 
@@ -300,24 +302,34 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
 }
 
 
-    // ===== Consultas =====
 
     // -g <node_id>
     private static void queryNodeWithAllProps(Connection cx, String nodeId) throws SQLException {
         long t0 = System.nanoTime();
 
-        String qNode = "SELECT label FROM nodes WHERE id = ?";
-        String qProps = "SELECT key, value FROM node_properties WHERE node_id = ?";
+        String qProps = "SELECT label, key, value FROM node_properties WHERE node_id = ?";
 
-        try (PreparedStatement psN = cx.prepareStatement(qNode)) {
+        try (PreparedStatement psN = cx.prepareStatement(qProps)) {
             psN.setString(1, nodeId);
+            psN.setFetchSize(1000);
+            string label = null;
+            long count = 0;
+
             try (ResultSet rn = psN.executeQuery()) {
-                if (!rn.next()) {
-                    System.out.println("Node not found: " + nodeId);
-                    return;
+                while (rs.next()) {
+                    if (label == null) {
+                        label = rs.getString(1);
+                        System.out.println("Node " + nodeId + "  label=" + label);
+                        
+                    }
+                    String k = rs.getString(2);
+                    String v = rs.getString(3);
+                    System.out.println("  " + k + " = " + v);
+                    count++;
                 }
-                String label = rn.getString(1);
-                System.out.println("Node " + nodeId + "  label=" + label);
+                if (label == null) {
+                   System.out.println("Node " + nodeId + " not found." ); 
+                }
             }
            long t1 = System.nanoTime();
               System.out.printf(Locale.ROOT, "Lookup node: %.3f ms%n", (t1 - t0)/1e6); 
