@@ -307,7 +307,7 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
         long t0 = System.nanoTime();
 
         String qNode = "SELECT label FROM nodes WHERE id = ?";
-        String qProps = "SELECT key, value FROM node_properties WHERE node_id = ? ORDER BY key";
+        String qProps = "SELECT key, value FROM node_properties WHERE node_id = ?";
 
         try (PreparedStatement psN = cx.prepareStatement(qNode)) {
             psN.setString(1, nodeId);
