@@ -309,55 +309,31 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
 
 
     // -g <node_id>
-    private static void queryNodeWithAllProps(Connection cx, String nodeId) throws SQLException {
-        long t0 = System.nanoTime();
+  // -g <node_id>
+private static void queryNodeWithAllProps(Connection cx, String nodeId) throws SQLException {
+    long t0 = System.nanoTime();
 
-        String qProps = "SELECT id, label, props FROM nodes WHERE node_id = ?";
+    String sql = "SELECT label, props FROM nodes WHERE id = ?";
 
-        try (PreparedStatement psN = cx.prepareStatement(qProps)) {
-            psN.setString(1, nodeId);
-            psN.setFetchSize(1000);
-            String label = null;
-            long count = 0;
-
-            try (ResultSet rn = psN.executeQuery()) {
-                while (rn.next()) {
-                    if (label == null) {
-                        label = rn.getString(1);
-                        System.out.println("Node " + nodeId + "  label=" + label);
-                        
-                    }
-                    String k = rn.getString(2);
-                    String v = rn.getString(3);
-                    System.out.println("  " + k + " = " + v);
-                    count++;
-                }
-                if (label == null) {
-                   System.out.println("Node " + nodeId + " not found." ); 
-                }
+    try (PreparedStatement ps = cx.prepareStatement(sql)) {
+        ps.setString(1, nodeId);
+        try (ResultSet rs = ps.executeQuery()) {
+            if (!rs.next()) {
+                System.out.println("Node not found: " + nodeId);
+                return;
             }
-           long t1 = System.nanoTime();
-              System.out.printf(Locale.ROOT, "Total props: %d, Lookup node time: %.3f ms%n",count, (t1 - t0)/1e6); 
+            String label = rs.getString("label");
+            String propsJson = rs.getString("props");
+
+            System.out.println("Node " + nodeId + "  label=" + label);
+            System.out.println("Props (JSON): " + propsJson);
         }
-        /*/
-        // Props en streaming
-        try (PreparedStatement psP = cx.prepareStatement(qProps)) {
-            psP.setFetchSize(1000);
-            psP.setString(1, nodeId);
-            long count = 0;
-            try (ResultSet rp = psP.executeQuery()) {
-                while (rp.next()) {
-                    String k = rp.getString(1);
-                    String v = rp.getString(2);
-                    System.out.println("  " + k + " = " + v);
-                    count++;
-                }
-            }
-            long t1 = System.nanoTime();
-            System.out.printf(Locale.ROOT, "Total props: %,d  (%.3f ms)%n", count, (t1 - t0)/1e6);
-        }
-            */
     }
+
+    long t1 = System.nanoTime();
+    System.out.printf(Locale.ROOT, "Lookup node time: %.3f ms%n", (t1 - t0)/1e6);
+}
+
 
     // -gl <label>
    // -gl <label>
