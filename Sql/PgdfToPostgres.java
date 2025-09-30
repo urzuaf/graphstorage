@@ -96,53 +96,53 @@ public class PgdfToPostgres {
     }
 
     // ===== DDL =====
-    private static void ensureSchema(Connection cx) throws SQLException {
-        String ddl =
-            "CREATE TABLE IF NOT EXISTS nodes (" +
-            "  id    TEXT PRIMARY KEY," +
-            "  label TEXT NOT NULL" +
-            ");" +
-            "CREATE TABLE IF NOT EXISTS node_properties (" +
-            "  node_id  TEXT NOT NULL REFERENCES nodes(id)," +
-            "  label    TEXT NOT NULL," +
-            "  key      TEXT NOT NULL," +
-            "  value    TEXT NOT NULL," +
-            "  value_lc TEXT NOT NULL" +
-            ");" +
-            "CREATE TABLE IF NOT EXISTS edges (" +
-            "  id       TEXT PRIMARY KEY," +
-            "  label    TEXT NOT NULL," +
-            "  src      TEXT NOT NULL REFERENCES nodes(id)," +
-            "  dst      TEXT NOT NULL REFERENCES nodes(id)," +
-            "  directed BOOLEAN NOT NULL" +
-            ");" +
-            "CREATE TABLE IF NOT EXISTS edge_properties (" +
-            "  edge_id  TEXT NOT NULL REFERENCES edges(id)," +
-            "  key      TEXT NOT NULL," +
-            "  value    TEXT NOT NULL," +
-            "  value_lc TEXT NOT NULL" +
-            ");" +
-            "CREATE INDEX IF NOT EXISTS idx_nodes_label           ON nodes(label);" +
-            "CREATE INDEX IF NOT EXISTS idx_nodeprops_key_vlc     ON node_properties(key, value_lc);" +
-            "CREATE INDEX IF NOT EXISTS idx_edges_label           ON edges(label);" +
-            "CREATE INDEX IF NOT EXISTS idx_edges_label_src       ON edges(label, src);" +
-            "CREATE INDEX IF NOT EXISTS idx_edges_label_dst       ON edges(label, dst);" +
-            "CREATE INDEX IF NOT EXISTS idx_nodeprops_node        ON node_properties(node_id);";
-        try (Statement st = cx.createStatement()) {
-            st.execute(ddl);
-        }
-        cx.commit();
+   private static void ensureSchema(Connection cx) throws SQLException {
+    String ddl =
+        "CREATE TABLE IF NOT EXISTS nodes (" +
+        "  id    TEXT PRIMARY KEY," +
+        "  label TEXT NOT NULL," +
+        "  props JSONB" +
+        ");" +
+        "CREATE TABLE IF NOT EXISTS node_properties (" +
+        "  node_id  TEXT NOT NULL REFERENCES nodes(id)," +
+        "  label    TEXT NOT NULL," +
+        "  key      TEXT NOT NULL," +
+        "  value    TEXT NOT NULL," +
+        "  value_lc TEXT NOT NULL" +
+        ");" +
+        "CREATE TABLE IF NOT EXISTS edges (" +
+        "  id       TEXT PRIMARY KEY," +
+        "  label    TEXT NOT NULL," +
+        "  src      TEXT NOT NULL REFERENCES nodes(id)," +
+        "  dst      TEXT NOT NULL REFERENCES nodes(id)," +
+        "  directed BOOLEAN NOT NULL" +
+        ");" +
+        "CREATE TABLE IF NOT EXISTS edge_properties (" +
+        "  edge_id  TEXT NOT NULL REFERENCES edges(id)," +
+        "  key      TEXT NOT NULL," +
+        "  value    TEXT NOT NULL," +
+        "  value_lc TEXT NOT NULL" +
+        ");" +
+        "CREATE INDEX IF NOT EXISTS idx_nodes_label           ON nodes(label);" +
+        "CREATE INDEX IF NOT EXISTS idx_nodeprops_key_vlc     ON node_properties(key, value_lc);" +
+        "CREATE INDEX IF NOT EXISTS idx_edges_label           ON edges(label);" +
+        "CREATE INDEX IF NOT EXISTS idx_edges_label_src       ON edges(label, src);" +
+        "CREATE INDEX IF NOT EXISTS idx_edges_label_dst       ON edges(label, dst);" +
+        "CREATE INDEX IF NOT EXISTS idx_nodeprops_node        ON node_properties(node_id);";
+    try (Statement st = cx.createStatement()) {
+        st.execute(ddl);
     }
-
+    cx.commit();
+}
     // ===== Ingesta =====
 // Ingesta Nodes.pgdf (Opción B: vaciar batches en orden: NODES -> PROPS)
 private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOException, SQLException {
     final String upsertNode =
-            "INSERT INTO nodes(id,label) VALUES(?,?) " +
-            "ON CONFLICT (id) DO UPDATE SET label=EXCLUDED.label";
+        "INSERT INTO nodes(id,label,props) VALUES(?,?,?::jsonb) " +
+        "ON CONFLICT (id) DO UPDATE SET label=EXCLUDED.label, props=EXCLUDED.props";
 
     final String insertProp =
-            "INSERT INTO node_properties(node_id,label, key,value,value_lc) VALUES(?,?,?,?,?)";
+        "INSERT INTO node_properties(node_id,label,key,value,value_lc) VALUES(?,?,?,?,?)";
 
     try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8);
          PreparedStatement psNode = cx.prepareStatement(upsertNode);
@@ -151,10 +151,8 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
         String line;
         String[] header = null;
 
-        int nBatch = 0;     // pendientes en psNode
-        int pBatch = 0;     // pendientes en psProp
-        long nCount = 0;    // contadores informativos
-        long pCount = 0;
+        int nBatch = 0, pBatch = 0;
+        long nCount = 0, pCount = 0;
 
         while ((line = br.readLine()) != null) {
             if (line.isBlank()) continue;
@@ -175,13 +173,30 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
             String label = nonNull(row.get("@label")).trim();
             if (id.isEmpty() || label.isEmpty()) continue;
 
-            // --- Acumular nodo ---
+            // --- JSON props ---
+            StringBuilder sb = new StringBuilder("{");
+            boolean first = true;
+            for (var e : row.entrySet()) {
+                String k = e.getKey();
+                if ("@id".equals(k) || "@label".equals(k)) continue;
+                String v = nonNull(e.getValue());
+                if (v.isEmpty()) continue;
+
+                if (!first) sb.append(",");
+                sb.append("\"").append(k).append("\":");
+                sb.append("\"").append(v.replace("\"", "\\\"")).append("\"");
+                first = false;
+            }
+            sb.append("}");
+
+            // --- Nodo con JSON props ---
             psNode.setString(1, id);
             psNode.setString(2, label);
+            psNode.setString(3, sb.toString());
             psNode.addBatch();
             nBatch++; nCount++;
 
-            // --- Acumular props ---
+            // --- node_properties ---
             for (var e : row.entrySet()) {
                 String k = e.getKey();
                 if ("@id".equals(k) || "@label".equals(k)) continue;
@@ -197,8 +212,6 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
                 psProp.addBatch();
                 pBatch++; pCount++;
 
-                
-                // garantizamos que se guarden todos los nodos antes que sus props
                 if (pBatch >= PROP_BATCH) {
                     if (nBatch > 0) {
                         psNode.executeBatch();
@@ -206,11 +219,10 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
                     }
                     psProp.executeBatch();
                     pBatch = 0;
-                    cx.commit(); 
+                    cx.commit();
                 }
             }
 
-            // simplemente guardamos los nodos si es que llegamos al limite
             if (nBatch >= NODE_BATCH) {
                 psNode.executeBatch();
                 nBatch = 0;
@@ -218,15 +230,8 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
             }
         }
 
-        // --- Flush final ---
-        if (nBatch > 0) {
-            psNode.executeBatch();
-            nBatch = 0;
-        }
-        if (pBatch > 0) {
-            psProp.executeBatch();
-            pBatch = 0;
-        }
+        if (nBatch > 0) psNode.executeBatch();
+        if (pBatch > 0) psProp.executeBatch();
         cx.commit();
 
         System.out.printf(Locale.ROOT, "  Nodes: %,d  NodeProps: %,d%n", nCount, pCount);
