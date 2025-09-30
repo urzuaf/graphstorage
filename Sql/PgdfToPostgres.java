@@ -24,7 +24,6 @@ public class PgdfToPostgres {
         boolean queryMode = args[3].startsWith("-");
 
         try (Connection cx = DriverManager.getConnection(url, user, pass)) {
-            // Para COPY/cursores del lado servidor se recomienda autocommit=false
             cx.setAutoCommit(false);
 
             if (!queryMode) {
@@ -47,11 +46,6 @@ public class PgdfToPostgres {
                 return;
             }
 
-            // -------- MODO CONSULTA --------
-            // Formatos:
-            //   -g  <node_id>
-            //   -gl <label>
-            //   -nv <atributo=valor>
             if (args.length < 5) usage();
 
             String flag = args[3];
@@ -201,7 +195,8 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
                 psProp.addBatch();
                 pBatch++; pCount++;
 
-                // Si vamos a vaciar PROPS, primero garantizamos vaciar NODES pendientes
+                
+                // garantizamos que se guarden todos los nodos antes que sus props
                 if (pBatch >= PROP_BATCH) {
                     if (nBatch > 0) {
                         psNode.executeBatch();
@@ -209,11 +204,11 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
                     }
                     psProp.executeBatch();
                     pBatch = 0;
-                    cx.commit(); // controla tamaño de WAL y memoria del backend
+                    cx.commit(); 
                 }
             }
 
-            // Si toca vaciar NODES por tamaño, sólo vaciamos nodes aquí
+            // simplemente guardamos los nodos si es que llegamos al limite
             if (nBatch >= NODE_BATCH) {
                 psNode.executeBatch();
                 nBatch = 0;
@@ -221,7 +216,7 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
             }
         }
 
-        // --- Flush final en orden correcto ---
+        // --- Flush final ---
         if (nBatch > 0) {
             psNode.executeBatch();
             nBatch = 0;
@@ -265,7 +260,6 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
 
             // <<< BLINDAJE: si aparece otro header en medio, lo saltamos >>>
             if (line.startsWith("@")) {
-                // puedes revalidar el header si necesitas: header = line.split("\\|",-1); idx = ...
                 continue;
             }
 
@@ -349,7 +343,7 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
    // -gl <label>
 private static void queryEdgeIdsByLabel(Connection cx, String label) throws SQLException {
     long t0 = System.nanoTime();
-    String sql = "SELECT id FROM edges WHERE label = ? ORDER BY id";
+    String sql = "SELECT id FROM edges WHERE label = ?";
 
     long count = 0L;
     final long LIMIT_PRINT = 10;
@@ -370,17 +364,16 @@ private static void queryEdgeIdsByLabel(Connection cx, String label) throws SQLE
 
     long t1 = System.nanoTime();
     if (count > LIMIT_PRINT) {
-        System.out.println("… (mostrando solo los primeros " + LIMIT_PRINT + " resultados)");
+        System.out.println("… (mostrando slos primeros " + LIMIT_PRINT + " resultados)");
     }
     System.err.printf(Locale.ROOT, "Total edgeIds: %,d  (%.3f ms)%n", count, (t1 - t0)/1e6);
 }
 
 
-    // -nv <atributo=valor>
-// -nv <atributo=valor>
+
 private static void queryNodesByPropEquals(Connection cx, String key, String value) throws SQLException {
     long t0 = System.nanoTime();
-    String sql = "SELECT node_id FROM node_properties WHERE key = ? AND value_lc = ? ORDER BY node_id";
+    String sql = "SELECT node_id FROM node_properties WHERE key = ? AND value_lc = ? ";
 
     long count = 0L;
     final long LIMIT_PRINT = 10;
