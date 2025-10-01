@@ -313,7 +313,7 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
 private static void queryNodeWithAllProps(Connection cx, String nodeId) throws SQLException {
     long t0 = System.nanoTime();
 
-    String sql = "SELECT label, key, value FROM node_properties WHERE id = ?";
+    String sql = "SELECT label, key, value FROM node_properties WHERE node_id = ?";
 
     try (PreparedStatement ps = cx.prepareStatement(sql)) {
         ps.setString(1, nodeId);
