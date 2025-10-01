@@ -7,9 +7,9 @@ import java.util.*;
 public class PostgresBlob {
 
     // Tamaño de lotes para batch inserts (ajusta según memoria/IO)
-    private static final int NODE_BATCH = 20_000;
-    private static final int EDGE_BATCH = 50_000;
-    private static final int PROP_BATCH = 50_000;
+    private static final int NODE_BATCH = 100_000;
+    private static final int EDGE_BATCH = 500_000;
+    private static final int PROP_BATCH = 100_000;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 4) {
@@ -32,7 +32,7 @@ public class PostgresBlob {
                 Path nodesFile = Paths.get(args[3]);
                 Path edgesFile = Paths.get(args[4]);
 
-                ensureSchema(cx);
+                ensureTables(cx);
 
                 long t0 = System.nanoTime();
                 ingestNodes(cx, nodesFile);
@@ -40,6 +40,8 @@ public class PostgresBlob {
                 ingestEdges(cx, edgesFile);
                 long t2 = System.nanoTime();
                 cx.commit();
+
+                createIndexes(cx);
                 System.out.printf(Locale.ROOT,
                         "Ingesta completada%n  nodos: %.3f ms%n  aristas: %.3f ms%n",
                         (t1 - t0)/1e6, (t2 - t1)/1e6);
@@ -96,6 +98,51 @@ public class PostgresBlob {
     }
 
     // ===== DDL =====
+        private static void ensureTables(Connection cx) throws SQLException {
+    String ddl =
+        "CREATE TABLE IF NOT EXISTS nodes (" +
+        "  id    TEXT PRIMARY KEY," +
+        "  label TEXT NOT NULL," +
+        "  props JSONB" +
+        ");" +
+        "CREATE TABLE IF NOT EXISTS node_properties (" +
+        "  node_id  TEXT NOT NULL REFERENCES nodes(id)," +
+        "  label    TEXT NOT NULL," +
+        "  key      TEXT NOT NULL," +
+        "  value    TEXT NOT NULL," +
+        "  value_lc TEXT NOT NULL" +
+        ");" +
+        "CREATE TABLE IF NOT EXISTS edges (" +
+        "  id       TEXT PRIMARY KEY," +
+        "  label    TEXT NOT NULL," +
+        "  src      TEXT NOT NULL REFERENCES nodes(id)," +
+        "  dst      TEXT NOT NULL REFERENCES nodes(id)," +
+        "  directed BOOLEAN NOT NULL" +
+        ");" +
+        "CREATE TABLE IF NOT EXISTS edge_properties (" +
+        "  edge_id  TEXT NOT NULL REFERENCES edges(id)," +
+        "  key      TEXT NOT NULL," +
+        "  value    TEXT NOT NULL," +
+        "  value_lc TEXT NOT NULL" +
+        ");";
+    try (Statement st = cx.createStatement()) {
+        st.execute(ddl);
+    }
+    cx.commit();
+}
+private static void createIndexes(Connection cx) throws SQLException {
+    String ddl =
+        "CREATE INDEX IF NOT EXISTS idx_nodes_label           ON nodes(label);" +
+        "CREATE INDEX IF NOT EXISTS idx_nodeprops_key_vlc     ON node_properties(key, value_lc);" +
+        "CREATE INDEX IF NOT EXISTS idx_edges_label           ON edges(label);" +
+        "CREATE INDEX IF NOT EXISTS idx_edges_label_src       ON edges(label, src);" +
+        "CREATE INDEX IF NOT EXISTS idx_edges_label_dst       ON edges(label, dst);" +
+        "CREATE INDEX IF NOT EXISTS idx_nodeprops_node        ON node_properties(node_id);";
+    try (Statement st = cx.createStatement()) {
+        st.execute(ddl);
+    }
+    cx.commit();
+}
    private static void ensureSchema(Connection cx) throws SQLException {
     String ddl =
         "CREATE TABLE IF NOT EXISTS nodes (" +
@@ -244,9 +291,7 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
     // Insertar SOLO si existen src y dst en nodes
     final String insertEdgeIfNodesExist =
         "INSERT INTO edges(id,label,src,dst,directed) " +
-        "SELECT ?,?,?,?,? " +
-        "WHERE EXISTS (SELECT 1 FROM nodes n1 WHERE n1.id = ?) " +
-        "  AND EXISTS (SELECT 1 FROM nodes n2 WHERE n2.id = ?) " +
+        "VALUES(?,?,?,?,?) " +
         "ON CONFLICT (id) DO NOTHING";
 
     try (BufferedReader br = Files.newBufferedReader(edgesPgdf, StandardCharsets.UTF_8);

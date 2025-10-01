@@ -6,10 +6,10 @@ import java.util.*;
 
 public class PostgresColumns {
 
-    // Tamaño de lotes para batch inserts (ajusta según memoria/IO)
-    private static final int NODE_BATCH = 20_000;
-    private static final int EDGE_BATCH = 50_000;
-    private static final int PROP_BATCH = 50_000;
+    // Tamaño de lotes para inserción masiva
+    private static final int NODE_BATCH = 100_000;
+    private static final int EDGE_BATCH = 500_000;
+    private static final int PROP_BATCH = 100_000;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 4) {
@@ -20,7 +20,7 @@ public class PostgresColumns {
         String user = args[1];
         String pass = args[2];
 
-        // Modo consultas: el 4º argumento empieza con '-'
+        // querymode: el 4to argumento empieza con -
         boolean queryMode = args[3].startsWith("-");
 
         try (Connection cx = DriverManager.getConnection(url, user, pass)) {
@@ -32,7 +32,7 @@ public class PostgresColumns {
                 Path nodesFile = Paths.get(args[3]);
                 Path edgesFile = Paths.get(args[4]);
 
-                ensureSchema(cx);
+                ensureTables(cx);
 
                 long t0 = System.nanoTime();
                 ingestNodes(cx, nodesFile);
@@ -40,6 +40,7 @@ public class PostgresColumns {
                 ingestEdges(cx, edgesFile);
                 long t2 = System.nanoTime();
                 cx.commit();
+                createIndexes(cx);
                 System.out.printf(Locale.ROOT,
                         "Ingesta completada%n  nodos: %.3f ms%n  aristas: %.3f ms%n",
                         (t1 - t0)/1e6, (t2 - t1)/1e6);
@@ -59,7 +60,7 @@ public class PostgresColumns {
                     queryEdgeIdsByLabel(cx, label);
                 }
                 case "-nv" -> {
-                    String spec = args[4]; // formato: key=valor
+                    String spec = args[4]; // key=valor
                     int p = spec.indexOf('=');
                     if (p <= 0 || p == spec.length()-1) {
                         System.err.println("Formato inválido para -nv. Usa atributo=valor");
@@ -96,6 +97,52 @@ public class PostgresColumns {
     }
 
     // ===== DDL =====
+    private static void ensureTables(Connection cx) throws SQLException {
+    String ddl =
+        "CREATE TABLE IF NOT EXISTS nodes (" +
+        "  id    TEXT PRIMARY KEY," +
+        "  label TEXT NOT NULL," +
+        "  props JSONB" +
+        ");" +
+        "CREATE TABLE IF NOT EXISTS node_properties (" +
+        "  node_id  TEXT NOT NULL REFERENCES nodes(id)," +
+        "  label    TEXT NOT NULL," +
+        "  key      TEXT NOT NULL," +
+        "  value    TEXT NOT NULL," +
+        "  value_lc TEXT NOT NULL" +
+        ");" +
+        "CREATE TABLE IF NOT EXISTS edges (" +
+        "  id       TEXT PRIMARY KEY," +
+        "  label    TEXT NOT NULL," +
+        "  src      TEXT NOT NULL REFERENCES nodes(id)," +
+        "  dst      TEXT NOT NULL REFERENCES nodes(id)," +
+        "  directed BOOLEAN NOT NULL" +
+        ");" +
+        "CREATE TABLE IF NOT EXISTS edge_properties (" +
+        "  edge_id  TEXT NOT NULL REFERENCES edges(id)," +
+        "  key      TEXT NOT NULL," +
+        "  value    TEXT NOT NULL," +
+        "  value_lc TEXT NOT NULL" +
+        ");";
+    try (Statement st = cx.createStatement()) {
+        st.execute(ddl);
+    }
+    cx.commit();
+}
+private static void createIndexes(Connection cx) throws SQLException {
+    String ddl =
+        "CREATE INDEX IF NOT EXISTS idx_nodes_label           ON nodes(label);" +
+        "CREATE INDEX IF NOT EXISTS idx_nodeprops_key_vlc     ON node_properties(key, value_lc);" +
+        "CREATE INDEX IF NOT EXISTS idx_edges_label           ON edges(label);" +
+        "CREATE INDEX IF NOT EXISTS idx_edges_label_src       ON edges(label, src);" +
+        "CREATE INDEX IF NOT EXISTS idx_edges_label_dst       ON edges(label, dst);" +
+        "CREATE INDEX IF NOT EXISTS idx_nodeprops_node        ON node_properties(node_id);";
+    try (Statement st = cx.createStatement()) {
+        st.execute(ddl);
+    }
+    cx.commit();
+}
+
    private static void ensureSchema(Connection cx) throws SQLException {
     String ddl =
         "CREATE TABLE IF NOT EXISTS nodes (" +
@@ -134,8 +181,8 @@ public class PostgresColumns {
     }
     cx.commit();
 }
-    // ===== Ingesta =====
-// Ingesta Nodes.pgdf (Opción B: vaciar batches en orden: NODES -> PROPS)
+
+// Ingesta Node
 private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOException, SQLException {
     final String upsertNode =
         "INSERT INTO nodes(id,label,props) VALUES(?,?,?::jsonb) " +
@@ -173,7 +220,7 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
             String label = nonNull(row.get("@label")).trim();
             if (id.isEmpty() || label.isEmpty()) continue;
 
-            // --- JSON props ---
+            // JSON props
             StringBuilder sb = new StringBuilder("{");
             boolean first = true;
             for (var e : row.entrySet()) {
@@ -189,14 +236,14 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
             }
             sb.append("}");
 
-            // --- Nodo con JSON props ---
+            //Nodo con JSON
             psNode.setString(1, id);
             psNode.setString(2, label);
             psNode.setString(3, sb.toString());
             psNode.addBatch();
             nBatch++; nCount++;
 
-            // --- node_properties ---
+            // node_properties
             for (var e : row.entrySet()) {
                 String k = e.getKey();
                 if ("@id".equals(k) || "@label".equals(k)) continue;
@@ -239,20 +286,16 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
 }
 
 
-// Ingesta Edges.pgdf segura (salta headers repetidos y evita FK con INSERT…SELECT…WHERE EXISTS)
+// Ingesta Edges
 private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOException, SQLException {
     // Insertar SOLO si existen src y dst en nodes
     final String insertEdgeIfNodesExist =
-        "INSERT INTO edges(id,label,src,dst,directed) " +
-        "SELECT ?,?,?,?,? " +
-        "WHERE EXISTS (SELECT 1 FROM nodes n1 WHERE n1.id = ?) " +
-        "  AND EXISTS (SELECT 1 FROM nodes n2 WHERE n2.id = ?) " +
-        "ON CONFLICT (id) DO NOTHING";
+        "INSERT INTO edges(id,label,src,dst,directed) " + "VALUES(?,?,?,?,?) " + "ON CONFLICT (id) DO NOTHING " ;
 
     try (BufferedReader br = Files.newBufferedReader(edgesPgdf, StandardCharsets.UTF_8);
          PreparedStatement psEdge = cx.prepareStatement(insertEdgeIfNodesExist)) {
 
-        // Leer el primer header
+        // Leer el  header
         String line = br.readLine();
         if (line == null) return;
         String[] header = line.split("\\|", -1);
@@ -265,7 +308,7 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
         while ((line = br.readLine()) != null) {
             if (line.isBlank()) continue;
 
-            // <<< BLINDAJE: si aparece otro header en medio, lo saltamos >>>
+            // de momento si aparece otro header en medio lo saltamos 
             if (line.startsWith("@")) {
                 continue;
             }
@@ -282,14 +325,14 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
             boolean directed = !"F".equalsIgnoreCase(dir.isEmpty() ? "T" : dir);
             if (eid.isEmpty()) eid = makeEdgeId(src, lab, dst);
 
-            // Bind: valores + src/dst repetidos para los EXISTS
+           
             psEdge.setString(1, eid);
             psEdge.setString(2, lab);
             psEdge.setString(3, src);
             psEdge.setString(4, dst);
             psEdge.setBoolean(5, directed);
-            psEdge.setString(6, src); // EXISTS n1
-            psEdge.setString(7, dst); // EXISTS n2
+            psEdge.setString(6, src);
+            psEdge.setString(7, dst);
             psEdge.addBatch();
             eBatch++; eCount++;
 
