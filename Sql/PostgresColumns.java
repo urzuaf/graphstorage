@@ -317,7 +317,7 @@ private static void queryNodeWithAllProps(Connection cx, String nodeId) throws S
 
     try (PreparedStatement ps = cx.prepareStatement(sql)) {
         ps.setString(1, nodeId);
-        ps.getFetchSize(1000);
+        ps.setFetchSize(1000);
 
         String label = null;
         long propcount = 0;
