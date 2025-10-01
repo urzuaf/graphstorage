@@ -189,7 +189,7 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
         "ON CONFLICT (id) DO UPDATE SET label=EXCLUDED.label, props=EXCLUDED.props";
 
     final String insertProp =
-        "INSERT INTO node_properties(node_id,label,key,value,value_lc) VALUES(?,?,?,?,?)";
+        "INSERT INTO node_properties(node_id,label,key,value,value_lc) VALUES(?,?,?,?,?)" + "ON CONFLICT DO NOTHING";
 
     try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8);
          PreparedStatement psNode = cx.prepareStatement(upsertNode);
