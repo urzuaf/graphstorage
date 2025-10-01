@@ -317,21 +317,34 @@ private static void queryNodeWithAllProps(Connection cx, String nodeId) throws S
 
     try (PreparedStatement ps = cx.prepareStatement(sql)) {
         ps.setString(1, nodeId);
-        try (ResultSet rs = ps.executeQuery()) {
-            if (!rs.next()) {
-                System.out.println("Node not found: " + nodeId);
-                return;
-            }
-            String label = rs.getString("label");
-            String propsJson = rs.getString("props");
+        ps.getFetchSize(1000);
 
-            System.out.println("Node " + nodeId + "  label=" + label);
-            System.out.println("Props (JSON): " + propsJson);
+        String label = null;
+        long propcount = 0;
+
+        try (ResultSet rs = ps.executeQuery()) {
+           while(rs.next()) {
+               if (label == null) {
+                   label = rs.getString(1);
+                   System.out.println("Node ID: " + nodeId);
+                   System.out.println("Label:   " + label);
+               }
+               String key = rs.getString(2);
+               String val = rs.getString(3);
+               System.out.println("  " + key + ": " + val);
+               propcount++;
+
+           }
         }
+        if (label == null) {
+            System.out.println("No se encontró el nodo con ID: " + nodeId);
+        } 
+        System.out.println("Total propiedades: " + propcount);
+        long t1 = System.nanoTime();
+        System.out.printf(Locale.ROOT, "Lookup node time: %.3f ms%n", (t1 - t0)/1e6);
+        
     }
 
-    long t1 = System.nanoTime();
-    System.out.printf(Locale.ROOT, "Lookup node time: %.3f ms%n", (t1 - t0)/1e6);
 }
 
 
