@@ -4,7 +4,7 @@ import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
 
-public class PgdfToPostgres {
+public class PostgresColumns {
 
     // Tamaño de lotes para batch inserts (ajusta según memoria/IO)
     private static final int NODE_BATCH = 20_000;
@@ -313,7 +313,7 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
 private static void queryNodeWithAllProps(Connection cx, String nodeId) throws SQLException {
     long t0 = System.nanoTime();
 
-    String sql = "SELECT label, props FROM nodes WHERE id = ?";
+    String sql = "SELECT label, key, value FROM nodes_properties WHERE id = ?";
 
     try (PreparedStatement ps = cx.prepareStatement(sql)) {
         ps.setString(1, nodeId);
