@@ -333,8 +333,6 @@ private static void ingestEdges(Connection cx, Path edgesPgdf) throws IOExceptio
             psEdge.setString(3, src);
             psEdge.setString(4, dst);
             psEdge.setBoolean(5, directed);
-            psEdge.setString(6, src); // EXISTS n1
-            psEdge.setString(7, dst); // EXISTS n2
             psEdge.addBatch();
             eBatch++; eCount++;
 
