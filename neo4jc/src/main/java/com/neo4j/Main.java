@@ -1,0 +1,351 @@
+package com.neo4j;
+
+import org.neo4j.driver.AuthTokens;
+import org.neo4j.driver.Driver;
+import org.neo4j.driver.GraphDatabase;
+import org.neo4j.driver.Query;
+import org.neo4j.driver.Result;
+import org.neo4j.driver.Session;
+import org.neo4j.driver.Transaction;
+import org.neo4j.driver.Record;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+
+import static org.neo4j.driver.Values.parameters;
+
+public class Main {
+
+    private static final int NODE_BATCH = 100_000;
+    private static final int EDGE_BATCH = 500_000;
+
+    public static void main(String[] args) throws Exception {
+        if (args.length < 4) usage();
+
+        String uri  = args[0];
+        String user = args[1];
+        String pass = args[2];
+
+        boolean queryMode = args[3].startsWith("-");
+
+        try (Driver driver = GraphDatabase.driver(uri, AuthTokens.basic(user, pass));
+             Session session = driver.session()) {
+
+            if (!queryMode) {
+                // Ingesta: <uri> <user> <pass> <Nodes.pgdf> <Edges.pgdf>
+                if (args.length < 5) usage();
+                Path nodesFile = Paths.get(args[3]);
+                Path edgesFile = Paths.get(args[4]);
+
+                ensureSchema(session);
+                clearDatabase(session);
+
+                long t0 = System.nanoTime();
+                ingestNodes(session, nodesFile);
+                ingestEdges(session, edgesFile);
+                long t1 = System.nanoTime();
+
+                System.out.printf(Locale.ROOT,
+                        "Ingesta completada : %.3f ms%n",(t1 - t0) / 1e6);
+                return;
+            }
+
+            // Consultas
+            if (args.length < 5) usage();
+            String flag = args[3];
+            switch (flag) {
+                case "-g" -> {
+                    String nodeId = args[4];
+                    queryNodeWithAllProps(session, nodeId);
+                }
+                case "-gl" -> {
+                    String label = args[4];
+                    queryEdgeIdsByLabel(session, label);
+                }
+                case "-nv" -> {
+                    String spec = args[4]; // key=valor
+                    int p = spec.indexOf('=');
+                    if (p <= 0 || p == spec.length() - 1) {
+                        System.err.println("Formato inválido para -nv. Usa atributo=valor");
+                        System.exit(2);
+                    }
+                    String key = spec.substring(0, p);
+                    String val = spec.substring(p + 1);
+                    queryNodesByPropEquals(session, key, val);
+                }
+                default -> usage();
+            }
+        }
+ 
+    }
+
+    private static void usage() {
+        System.err.println("""
+            Uso:
+
+              Ingesta:
+                mvn compile exec:java -Dexec.mainClass="com.neo4j.Main" -Dexec.args="<uri> <user> <pass> <Nodes.pgdf> <Edges.pgdf>"
+
+              Consultas:
+                1) Nodo + todas sus propiedades
+                   mvn compile exec:java -Dexec.mainClass="com.neo4j.Main" -Dexec.args="<uri> <user> <pass> -g <node_id>"
+
+                2) IDs de aristas por etiqueta
+                   mvn compile exec:java -Dexec.mainClass="com.neo4j.Main" -Dexec.args="<uri> <user> <pass> -gl <label>"
+
+                3) Nodos con propiedad=valor (case-insensitive exact)
+                   mvn compile exec:java -Dexec.mainClass="com.neo4j.Main" -Dexec.args="<uri> <user> <pass> -nv <atributo=valor>"
+            """);
+        System.exit(2);
+    }
+
+    private static void ensureSchema(Session session) {
+        // Índices en nodoss
+        session.run("CREATE INDEX node_id IF NOT EXISTS FOR (n:Node) ON (n.id)");
+        session.run("CREATE INDEX node_label IF NOT EXISTS FOR (n:Node) ON (n.label)");
+
+    }
+
+    //Ingesta de nodos
+    private static void ingestNodes(Session session, Path nodesPgdf) throws IOException {
+        final String cypher = """
+            MERGE (n:Node {id: $id})
+            SET n.label = $label
+            WITH n, $props AS props
+            SET n += props
+            """;
+
+        try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8)) {
+            String line;
+            String[] header = null;
+            long nCount = 0;
+            int batchCount = 0;
+
+            Transaction tx = session.beginTransaction();
+            try {
+                while ((line = br.readLine()) != null) {
+                    if (line.isBlank()) continue;
+
+                    if (line.startsWith("@")) {
+                        header = line.split("\\|", -1);
+                        continue;
+                    }
+                    if (header == null) continue;
+
+                    String[] cols = line.split("\\|", -1);
+                    Map<String, String> row = new LinkedHashMap<>();
+                    for (int i = 0; i < header.length && i < cols.length; i++) row.put(header[i], cols[i]);
+
+                    String id = nonNull(row.get("@id")).trim();
+                    String label = nonNull(row.get("@label")).trim();
+                    if (id.isEmpty() || label.isEmpty()) continue;
+
+                    Map<String,Object> props = new LinkedHashMap<>();
+                    for (var e : row.entrySet()) {
+                        String k = e.getKey();
+                        if ("@id".equals(k) || "@label".equals(k)) continue;
+                        String v = nonNull(e.getValue()).trim();
+                        if (!v.isEmpty()) props.put(k, v); 
+                    }
+
+                    tx.run(new Query(cypher, parameters("id", id, "label", label, "props", props)));
+
+                    nCount++;
+                    batchCount++;
+                    if (batchCount >= NODE_BATCH) {
+                        tx.commit();
+                        tx.close();
+                        tx = session.beginTransaction();
+                        batchCount = 0;
+                    }
+                }
+                tx.commit();
+            } finally {
+                if (tx.isOpen()) tx.close();
+            }
+            System.out.printf(Locale.ROOT, "  Nodes: %,d%n", nCount);
+        }
+    }
+
+    //Ingesta de aristas
+    private static void ingestEdges(Session session, Path edgesPgdf) throws IOException {
+        try (BufferedReader br = Files.newBufferedReader(edgesPgdf, StandardCharsets.UTF_8)) {
+            String line = br.readLine();
+            if (line == null) {
+                System.out.println("  Edges: 0");
+                return;
+            }
+
+            String[] header = line.split("\\|", -1);
+            Map<String, Integer> idx = new HashMap<>();
+            for (int i = 0; i < header.length; i++) idx.put(header[i], i);
+
+            long eCount = 0;
+            int batchCount = 0;
+
+            Transaction tx = session.beginTransaction();
+            try {
+                while ((line = br.readLine()) != null) {
+                    if (line.isBlank()) continue;
+                    if (line.startsWith("@")) continue;
+
+                    String[] cols = line.split("\\|", -1);
+
+                    String eid = safe(cols, idx.get("@id"));
+                    String lab = safe(cols, idx.get("@label"));
+                    String dir = safe(cols, idx.get("@dir"));
+                    String src = safe(cols, idx.get("@out"));
+                    String dst = safe(cols, idx.get("@in"));
+
+                    if (lab.isEmpty() || src.isEmpty() || dst.isEmpty()) continue;
+                    boolean directed = !"F".equalsIgnoreCase(dir.isEmpty() ? "T" : dir);
+                    if (eid.isEmpty()) {
+                        eid = makeEdgeId(src, lab, dst);
+                    }
+
+                    // Tipo de relación a partir del label
+                    String relType = relType(lab);
+
+                    String cypher = """
+                        MERGE (src:Node {id: $src})
+                        MERGE (dst:Node {id: $dst})
+                        MERGE (src)-[r:%s {id: $eid}]->(dst)
+                        SET r.directed = $directed
+                        """.formatted(relType);
+
+                    tx.run(new Query(cypher, parameters(
+                            "eid", eid,
+                            "src", src,
+                            "dst", dst,
+                            "directed", directed
+                    )));
+
+                    eCount++;
+                    batchCount++;
+
+                    if (batchCount >= EDGE_BATCH) {
+                        tx.commit();
+                        tx.close();
+                        tx = session.beginTransaction();
+                        batchCount = 0;
+                    }
+                }
+                tx.commit();
+            } finally {
+                if (tx.isOpen()) tx.close();
+            }
+
+            System.out.printf(Locale.ROOT, "  Edges: %,d%n", eCount);
+        }
+    }
+
+    // Consultas
+
+    // -g <node_id>
+    private static void queryNodeWithAllProps(Session session, String nodeId) {
+        long t0 = System.nanoTime();
+        String cypher = "MATCH (n:Node {id: $id}) RETURN n";
+        Result result = session.run(cypher, parameters("id", nodeId));
+
+        if (!result.hasNext()) {
+            System.out.println("Node not found: " + nodeId);
+            return;
+        }
+        Record rec = result.next();
+        var node = rec.get("n").asNode();
+        Map<String,Object> props = node.asMap();
+
+        System.out.println("Node ID: " + nodeId);
+        Object label = props.getOrDefault("label", "");
+        System.out.println("Label:   " + label);
+
+        props.entrySet().stream()
+                .filter(e -> !e.getKey().equals("id") && !e.getKey().equals("label"))
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> System.out.println("  " + e.getKey() + " = " + e.getValue()));
+        long t1 = System.nanoTime();
+        System.out.printf(Locale.ROOT, "Query time: %.3f ms%n", (t1 - t0) / 1e6);
+    }
+
+    // -gl <label>  
+    private static void queryEdgeIdsByLabel(Session session, String label) {
+        long t0 = System.nanoTime();
+        String relType = relType(label);
+        String cypher = "MATCH ()-[r:" + relType + "]->() RETURN r.id AS id";
+        Result result = session.run(cypher);
+
+        long count = 0;
+        final long LIMIT_PRINT = 10;
+        while (result.hasNext()) {
+            Record rec = result.next();
+            count++;
+            if (count <= LIMIT_PRINT) {
+                System.out.println(rec.get("id").asString());
+            }
+        }
+        if (count > LIMIT_PRINT) {
+            System.out.println("… (mostrando solo los primeros " + LIMIT_PRINT + " resultados)");
+        }
+        System.err.printf(Locale.ROOT, "Total edgeIds: %,d%n", count);
+        long t1 = System.nanoTime();
+        System.out.printf(Locale.ROOT, "Query time: %.3f ms%n", (t1 - t0) / 1e6);
+    }
+
+    // -nv <atributo=valor> 
+    private static void queryNodesByPropEquals(Session session, String key, String value) {
+        long t0 = System.nanoTime();
+        String cypher = """
+            MATCH (n:Node)
+            WHERE toLower(toString(properties(n)[$key])) = toLower($val)
+            RETURN n.id AS id
+            """;
+        Result result = session.run(cypher, parameters("key", key, "val", value));
+
+        long count = 0;
+        final long LIMIT_PRINT = 10;
+        while (result.hasNext()) {
+            Record rec = result.next();
+            count++;
+            if (count <= LIMIT_PRINT) {
+                System.out.println(rec.get("id").asString());
+            }
+        }
+        if (count > LIMIT_PRINT) {
+            System.out.println("… (mostrando solo los primeros " + LIMIT_PRINT + " resultados)");
+        }
+        System.err.printf(Locale.ROOT, "Total nodes: %,d%n", count);
+        long t1 = System.nanoTime();
+        System.out.printf(Locale.ROOT, "Query time: %.3f ms%n", (t1 - t0) / 1e6);
+    }
+
+
+    private static String nonNull(String s){ return (s == null) ? "" : s; }
+    private static String safe(String[] a, Integer i){
+        if (i == null || i < 0 || i >= a.length) return "";
+        String s = a[i];
+        return s == null ? "" : s;
+    }
+    private static String makeEdgeId(String src, String label, String dst) {
+        String s = src + "|" + label + "|" + dst;
+        long x = 1125899906842597L;
+        for (int i=0;i<s.length();i++) x = (x * 1315423911L) ^ s.charAt(i);
+        return Long.toUnsignedString(x);
+    }
+
+    private static String relType(String label) {
+        String norm = label.replaceAll("[^A-Z0-9_]", "_");
+        if (norm.isEmpty()) norm = "REL";
+        // Asegurar que no empiece por numero
+        if (Character.isDigit(norm.charAt(0))) norm = "_" + norm;
+        return norm;
+    }
+    private static void clearDatabase(Session session) {
+    System.out.println("Preparando BD para inserción…");
+    session.run("MATCH (n) DETACH DELETE n");
+    System.out.println("Base limpia.");
+}
+
+}
