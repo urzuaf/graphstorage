@@ -365,6 +365,7 @@ private static void queryNodeWithAllProps(Connection cx, String nodeId) throws S
 
         try (ResultSet rs = ps.executeQuery()) {
            while(rs.next()) {
+                //proceso de obtener los datos 
                if (label == null) {
                    label = rs.getString(1);
                    System.out.println("Node ID: " + nodeId);
