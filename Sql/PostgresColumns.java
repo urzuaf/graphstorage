@@ -189,7 +189,8 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
         "ON CONFLICT (id) DO UPDATE SET label=EXCLUDED.label, props=EXCLUDED.props";
 
     final String insertProp =
-        "INSERT INTO node_properties(node_id,label,key,value,value_lc) VALUES(?,?,?,?,?) " + "ON CONFLICT DO NOTHING";
+        "INSERT INTO node_properties(node_id,label,key,value,value_lc) VALUES(?,?,?,?,?) " +
+        "ON CONFLICT DO NOTHING";
 
     try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8);
          PreparedStatement psNode = cx.prepareStatement(upsertNode);
@@ -220,7 +221,7 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
             String label = nonNull(row.get("@label")).trim();
             if (id.isEmpty() || label.isEmpty()) continue;
 
-            // JSON props
+            // Construcción segura del JSON
             StringBuilder sb = new StringBuilder("{");
             boolean first = true;
             for (var e : row.entrySet()) {
@@ -230,20 +231,20 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
                 if (v.isEmpty()) continue;
 
                 if (!first) sb.append(",");
-                sb.append("\"").append(k).append("\":");
-                sb.append("\"").append(v.replace("\"", "\\\"")).append("\"");
+                sb.append("\"").append(escapeJson(k)).append("\":");
+                sb.append("\"").append(escapeJson(v)).append("\"");
                 first = false;
             }
             sb.append("}");
 
-            //Nodo con JSON
+            // Nodo con JSON
             psNode.setString(1, id);
             psNode.setString(2, label);
             psNode.setString(3, sb.toString());
             psNode.addBatch();
             nBatch++; nCount++;
 
-            // node_properties
+            // Propiedades individuales
             for (var e : row.entrySet()) {
                 String k = e.getKey();
                 if ("@id".equals(k) || "@label".equals(k)) continue;
@@ -283,6 +284,31 @@ private static void ingestNodes(Connection cx, Path nodesPgdf) throws IOExceptio
 
         System.out.printf(Locale.ROOT, "  Nodes: %,d  NodeProps: %,d%n", nCount, pCount);
     }
+}
+
+/** Escapa caracteres problematicos JSON */
+private static String escapeJson(String text) {
+    if (text == null) return "";
+    StringBuilder sb = new StringBuilder(text.length() + 16);
+    for (int i = 0; i < text.length(); i++) {
+        char c = text.charAt(i);
+        switch (c) {
+            case '"': sb.append("\\\""); break;
+            case '\\': sb.append("\\\\"); break;
+            case '\n': sb.append("\\n"); break;
+            case '\r': sb.append("\\r"); break;
+            case '\t': sb.append("\\t"); break;
+            case '\b': sb.append("\\b"); break;
+            case '\f': sb.append("\\f"); break;
+            default:
+                if (c < 0x20 || c == 0x7F) {
+                    sb.append(String.format("\\u%04x", (int) c)); // elimina caracteres de control
+                } else {
+                    sb.append(c);
+                }
+        }
+    }
+    return sb.toString();
 }
 
 
