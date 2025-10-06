@@ -324,10 +324,10 @@ private static void executeEdgeBatch(Transaction tx, List<Map<String, Object>> b
     private static void queryNodesByPropEquals(Session session, String key, String value) {
         long t0 = System.nanoTime();
         String cypher = """
-            MATCH (n:Node)
-            WHERE toLower(toString(properties(n)[$key])) = toLower($val)
-            RETURN n.id AS id
-            """;
+        MATCH (n:Node)
+        WHERE properties(n)[$key] = $val
+        RETURN n.id AS id
+        """;
         Result result = session.run(cypher, parameters("key", key, "val", value));
 
         long count = 0;
