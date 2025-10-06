@@ -184,7 +184,8 @@ public class Main {
 
 
     //Ingesta de aristas
- private static void ingestEdges(Session session, Path edgesPgdf) throws IOException {
+// Ingesta de aristas (sin tx exterior; tx por lote)
+private static void ingestEdges(Session session, Path edgesPgdf) throws IOException {
     try (BufferedReader br = Files.newBufferedReader(edgesPgdf, StandardCharsets.UTF_8)) {
         String line = br.readLine();
         if (line == null) {
@@ -198,65 +199,57 @@ public class Main {
 
         long eCount = 0;
         int batchCount = 0;
-        List<Map<String, Object>> batch = new ArrayList<>();
+        List<Map<String, Object>> batch = new ArrayList<>(EDGE_BATCH);
 
+        while ((line = br.readLine()) != null) {
+            if (line.isBlank() || line.startsWith("@")) continue;
 
-        Transaction tx = session.beginTransaction();
-        try {
-            while ((line = br.readLine()) != null) {
-                if (line.isBlank()) continue;
-                if (line.startsWith("@")) continue; 
+            String[] cols = line.split("\\|", -1);
+            String eid = safe(cols, idx.get("@id"));
+            String lab = safe(cols, idx.get("@label"));
+            String dir = safe(cols, idx.get("@dir"));
+            String src = safe(cols, idx.get("@out"));
+            String dst = safe(cols, idx.get("@in"));
 
-                String[] cols = line.split("\\|", -1);
-                String eid = safe(cols, idx.get("@id"));
-                String lab = safe(cols, idx.get("@label"));
-                String dir = safe(cols, idx.get("@dir"));
-                String src = safe(cols, idx.get("@out"));
-                String dst = safe(cols, idx.get("@in"));
+            if (lab.isEmpty() || src.isEmpty() || dst.isEmpty()) continue;
 
-                if (lab.isEmpty() || src.isEmpty() || dst.isEmpty()) continue;
+            boolean directed = !"F".equalsIgnoreCase(dir.isEmpty() ? "T" : dir);
+            if (eid.isEmpty()) eid = makeEdgeId(src, lab, dst);
 
-                boolean directed = !"F".equalsIgnoreCase(dir.isEmpty() ? "T" : dir);
-                if (eid.isEmpty()) eid = makeEdgeId(src, lab, dst);
+            batch.add(Map.of(
+                "eid", eid,
+                "label", lab,
+                "src", src,
+                "dst", dst,
+                "directed", directed
+            ));
 
-                batch.add(Map.of(
-                    "eid", eid,
-                    "label", lab,
-                    "src", src,
-                    "dst", dst,
-                    "directed", directed
-                ));
+            batchCount++;
+            eCount++;
 
-                batchCount++;
-                eCount++;
-
-                if (batchCount >= EDGE_BATCH) {
-                    try(Transaction txBatch = session.beginTransaction()) {
-                        executeEdgeBatch(txBatch, batch);
-                        txBatch.commit();
-                    }
-                    batch.clear();
-                    batchCount = 0;
+            if (batchCount >= EDGE_BATCH) {
+                try (Transaction tx = session.beginTransaction()) {
+                    executeEdgeBatch(tx, batch); // una sola tx por lote
+                    tx.commit();
                 }
-            }
-            if (!batch.isEmpty()) {
-                executeEdgeBatch(tx, batch);
                 batch.clear();
+                batchCount = 0;
             }
+        }
 
-            tx.commit();
-        } catch (Exception e) {
-            tx.rollback();
-            throw e;
-        } finally {
-            tx.close();
+        if (!batch.isEmpty()) {
+            try (Transaction tx = session.beginTransaction()) {
+                executeEdgeBatch(tx, batch);
+                tx.commit();
+            }
+            batch.clear();
         }
 
         System.out.printf(Locale.ROOT, "  Edges: %,d%n", eCount);
     }
 }
 
-
+// Ejecuta un lote (MATCH + CREATE para ahorrar memoria; MERGE solo en la relación)
 private static void executeEdgeBatch(Transaction tx, List<Map<String, Object>> batch) {
     Map<String, List<Map<String, Object>>> grouped = new HashMap<>();
     for (Map<String, Object> edge : batch) {
@@ -269,8 +262,8 @@ private static void executeEdgeBatch(Transaction tx, List<Map<String, Object>> b
 
         String cypher = """
             UNWIND $batch AS row
-            MERGE (src:Node {id: row.src})
-            MERGE (dst:Node {id: row.dst})
+            MATCH (src:Node {id: row.src})
+            MATCH (dst:Node {id: row.dst})
             MERGE (src)-[r:%s {id: row.eid}]->(dst)
             SET r.directed = row.directed
             """.formatted(relType);
