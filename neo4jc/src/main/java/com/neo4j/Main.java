@@ -40,8 +40,8 @@ public class Main {
                 Path nodesFile = Paths.get(args[3]);
                 Path edgesFile = Paths.get(args[4]);
 
-                ensureSchema(session);
                 clearDatabase(session);
+                ensureSchema(session);
 
                 long t0 = System.nanoTime();
                 ingestNodes(session, nodesFile);
@@ -110,65 +110,69 @@ public class Main {
     }
 
     //Ingesta de nodos
-    private static void ingestNodes(Session session, Path nodesPgdf) throws IOException {
-        final String cypher = """
-            MERGE (n:Node {id: $id})
-            SET n.label = $label
-            WITH n, $props AS props
-            SET n += props
-            """;
+ private static void ingestNodes(Session session, Path nodesPgdf) throws IOException {
+    final String cypher = """
+        UNWIND $batch AS row
+        CREATE (n:Node {id: row.id, label: row.label})
+        SET n += row.props
+        """;
 
-        try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8)) {
-            String line;
-            String[] header = null;
-            long nCount = 0;
-            int batchCount = 0;
+    try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8)) {
+        String line;
+        String[] header = null;
+        long nCount = 0;
 
-            Transaction tx = session.beginTransaction();
-            try {
-                while ((line = br.readLine()) != null) {
-                    if (line.isBlank()) continue;
+        // Batch buffer
+        List<Map<String, Object>> batch = new ArrayList<>(NODE_BATCH);
 
-                    if (line.startsWith("@")) {
-                        header = line.split("\\|", -1);
-                        continue;
-                    }
-                    if (header == null) continue;
+        while ((line = br.readLine()) != null) {
+            if (line.isBlank()) continue;
 
-                    String[] cols = line.split("\\|", -1);
-                    Map<String, String> row = new LinkedHashMap<>();
-                    for (int i = 0; i < header.length && i < cols.length; i++) row.put(header[i], cols[i]);
-
-                    String id = nonNull(row.get("@id")).trim();
-                    String label = nonNull(row.get("@label")).trim();
-                    if (id.isEmpty() || label.isEmpty()) continue;
-
-                    Map<String,Object> props = new LinkedHashMap<>();
-                    for (var e : row.entrySet()) {
-                        String k = e.getKey();
-                        if ("@id".equals(k) || "@label".equals(k)) continue;
-                        String v = nonNull(e.getValue()).trim();
-                        if (!v.isEmpty()) props.put(k, v); 
-                    }
-
-                    tx.run(new Query(cypher, parameters("id", id, "label", label, "props", props)));
-
-                    nCount++;
-                    batchCount++;
-                    if (batchCount >= NODE_BATCH) {
-                        tx.commit();
-                        tx.close();
-                        tx = session.beginTransaction();
-                        batchCount = 0;
-                    }
-                }
-                tx.commit();
-            } finally {
-                if (tx.isOpen()) tx.close();
+            if (line.startsWith("@")) {
+                header = line.split("\\|", -1);
+                continue;
             }
-            System.out.printf(Locale.ROOT, "  Nodes: %,d%n", nCount);
+            if (header == null) continue;
+
+            String[] cols = line.split("\\|", -1);
+            Map<String, String> row = new LinkedHashMap<>();
+            for (int i = 0; i < header.length && i < cols.length; i++) {
+                row.put(header[i], cols[i]);
+            }
+
+            String id = nonNull(row.get("@id")).trim();
+            String label = nonNull(row.get("@label")).trim();
+            if (id.isEmpty() || label.isEmpty()) continue;
+
+            Map<String, Object> props = new LinkedHashMap<>();
+            for (var e : row.entrySet()) {
+                String k = e.getKey();
+                if ("@id".equals(k) || "@label".equals(k)) continue;
+                String v = nonNull(e.getValue()).trim();
+                if (!v.isEmpty()) props.put(k, v);
+            }
+
+            Map<String, Object> nodeData = new HashMap<>();
+            nodeData.put("id", id);
+            nodeData.put("label", label);
+            nodeData.put("props", props);
+            batch.add(nodeData);
+            nCount++;
+
+            if (batch.size() >= NODE_BATCH) {
+                session.run(cypher, parameters("batch", batch));
+                batch.clear();
+            }
         }
+
+        if (!batch.isEmpty()) {
+            session.run(cypher, parameters("batch", batch));
+        }
+
+        System.out.printf(Locale.ROOT, "  Nodes: %,d%n", nCount);
     }
+}
+
 
     //Ingesta de aristas
     private static void ingestEdges(Session session, Path edgesPgdf) throws IOException {
