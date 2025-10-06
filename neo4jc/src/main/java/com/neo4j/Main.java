@@ -19,8 +19,8 @@ import static org.neo4j.driver.Values.parameters;
 
 public class Main {
 
-    private static final int NODE_BATCH = 10000;
-    private static final int EDGE_BATCH = 50000;
+    private static final int NODE_BATCH = 3000;
+    private static final int EDGE_BATCH = 5000;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 4) usage();
@@ -175,76 +175,98 @@ public class Main {
 
 
     //Ingesta de aristas
-    private static void ingestEdges(Session session, Path edgesPgdf) throws IOException {
-        try (BufferedReader br = Files.newBufferedReader(edgesPgdf, StandardCharsets.UTF_8)) {
-            String line = br.readLine();
-            if (line == null) {
-                System.out.println("  Edges: 0");
-                return;
-            }
-
-            String[] header = line.split("\\|", -1);
-            Map<String, Integer> idx = new HashMap<>();
-            for (int i = 0; i < header.length; i++) idx.put(header[i], i);
-
-            long eCount = 0;
-            int batchCount = 0;
-
-            Transaction tx = session.beginTransaction();
-            try {
-                while ((line = br.readLine()) != null) {
-                    if (line.isBlank()) continue;
-                    if (line.startsWith("@")) continue;
-
-                    String[] cols = line.split("\\|", -1);
-
-                    String eid = safe(cols, idx.get("@id"));
-                    String lab = safe(cols, idx.get("@label"));
-                    String dir = safe(cols, idx.get("@dir"));
-                    String src = safe(cols, idx.get("@out"));
-                    String dst = safe(cols, idx.get("@in"));
-
-                    if (lab.isEmpty() || src.isEmpty() || dst.isEmpty()) continue;
-                    boolean directed = !"F".equalsIgnoreCase(dir.isEmpty() ? "T" : dir);
-                    if (eid.isEmpty()) {
-                        eid = makeEdgeId(src, lab, dst);
-                    }
-
-                    // Tipo de relación a partir del label
-                    String relType = relType(lab);
-
-                    String cypher = """
-                        MERGE (src:Node {id: $src})
-                        MERGE (dst:Node {id: $dst})
-                        MERGE (src)-[r:%s {id: $eid}]->(dst)
-                        SET r.directed = $directed
-                        """.formatted(relType);
-
-                    tx.run(new Query(cypher, parameters(
-                            "eid", eid,
-                            "src", src,
-                            "dst", dst,
-                            "directed", directed
-                    )));
-
-                    eCount++;
-                    batchCount++;
-
-                    if (batchCount >= EDGE_BATCH) {
-                        tx.commit();
-                        tx.close();
-                        tx = session.beginTransaction();
-                        batchCount = 0;
-                    }
-                }
-                tx.commit();
-            } finally {
-                if (tx.isOpen()) tx.close();
-            }
-
-            System.out.printf(Locale.ROOT, "  Edges: %,d%n", eCount);
+ private static void ingestEdges(Session session, Path edgesPgdf) throws IOException {
+    try (BufferedReader br = Files.newBufferedReader(edgesPgdf, StandardCharsets.UTF_8)) {
+        String line = br.readLine();
+        if (line == null) {
+            System.out.println("  Edges: 0");
+            return;
         }
+
+        String[] header = line.split("\\|", -1);
+        Map<String, Integer> idx = new HashMap<>();
+        for (int i = 0; i < header.length; i++) idx.put(header[i], i);
+
+        long eCount = 0;
+        int batchCount = 0;
+        List<Map<String, Object>> batch = new ArrayList<>();
+
+
+        Transaction tx = session.beginTransaction();
+        try {
+            while ((line = br.readLine()) != null) {
+                if (line.isBlank()) continue;
+                if (line.startsWith("@")) continue; 
+
+                String[] cols = line.split("\\|", -1);
+                String eid = safe(cols, idx.get("@id"));
+                String lab = safe(cols, idx.get("@label"));
+                String dir = safe(cols, idx.get("@dir"));
+                String src = safe(cols, idx.get("@out"));
+                String dst = safe(cols, idx.get("@in"));
+
+                if (lab.isEmpty() || src.isEmpty() || dst.isEmpty()) continue;
+
+                boolean directed = !"F".equalsIgnoreCase(dir.isEmpty() ? "T" : dir);
+                if (eid.isEmpty()) eid = makeEdgeId(src, lab, dst);
+
+                batch.add(Map.of(
+                    "eid", eid,
+                    "label", lab,
+                    "src", src,
+                    "dst", dst,
+                    "directed", directed
+                ));
+
+                batchCount++;
+                eCount++;
+
+                if (batchCount >= EDGE_BATCH) {
+                    executeEdgeBatch(tx, batch);
+                    batch.clear();
+                    batchCount = 0;
+                }
+            }
+            if (!batch.isEmpty()) {
+                executeEdgeBatch(tx, batch);
+                batch.clear();
+            }
+
+            tx.commit();
+        } catch (Exception e) {
+            tx.rollback();
+            throw e;
+        } finally {
+            tx.close();
+        }
+
+        System.out.printf(Locale.ROOT, "  Edges: %,d%n", eCount);
     }
+}
+
+
+private static void executeEdgeBatch(Transaction tx, List<Map<String, Object>> batch) {
+    Map<String, List<Map<String, Object>>> grouped = new HashMap<>();
+    for (Map<String, Object> edge : batch) {
+        String label = (String) edge.get("label");
+        grouped.computeIfAbsent(label, k -> new ArrayList<>()).add(edge);
+    }
+
+    for (Map.Entry<String, List<Map<String, Object>>> entry : grouped.entrySet()) {
+        String relType = relType(entry.getKey());
+
+        String cypher = """
+            UNWIND $batch AS row
+            MERGE (src:Node {id: row.src})
+            MERGE (dst:Node {id: row.dst})
+            MERGE (src)-[r:%s {id: row.eid}]->(dst)
+            SET r.directed = row.directed
+            """.formatted(relType);
+
+        tx.run(new Query(cypher, parameters("batch", entry.getValue())));
+    }
+}
+
 
     // Consultas
 
