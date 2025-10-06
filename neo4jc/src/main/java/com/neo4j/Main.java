@@ -160,13 +160,22 @@ public class Main {
             nCount++;
 
             if (batch.size() >= NODE_BATCH) {
-                session.run(cypher, parameters("batch", batch));
+                try (Transaction tx = session.beginTransaction()) {
+                    tx.run(new Query(cypher, parameters("batch", batch)));
+                    tx.commit();
+                }
+                //session.run(cypher, parameters("batch", batch));
                 batch.clear();
+
             }
         }
 
         if (!batch.isEmpty()) {
-            session.run(cypher, parameters("batch", batch));
+            try (Transaction tx = session.beginTransaction()) {
+                tx.run(new Query(cypher, parameters("batch", batch)));
+                tx.commit();
+            }
+            batch.clear();
         }
 
         System.out.printf(Locale.ROOT, "  Nodes: %,d%n", nCount);
@@ -222,7 +231,10 @@ public class Main {
                 eCount++;
 
                 if (batchCount >= EDGE_BATCH) {
-                    executeEdgeBatch(tx, batch);
+                    try(Transaction txBatch = session.beginTransaction()) {
+                        executeEdgeBatch(txBatch, batch);
+                        txBatch.commit();
+                    }
                     batch.clear();
                     batchCount = 0;
                 }
