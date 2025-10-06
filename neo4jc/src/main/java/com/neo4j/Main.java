@@ -377,7 +377,7 @@ private static void executeEdgeBatch(Transaction tx, List<Map<String, Object>> b
     private static void clearDatabase(Session session) {
     System.out.println("Preparando BD para inserción…");
     long total = 0;
-    final int LIMIT = 10_000; 
+    final int LIMIT = 5_000; 
 
     while (true) {
         Result r = session.run("""
