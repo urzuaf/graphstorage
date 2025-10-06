@@ -19,8 +19,8 @@ import static org.neo4j.driver.Values.parameters;
 
 public class Main {
 
-    private static final int NODE_BATCH = 3000;
-    private static final int EDGE_BATCH = 5000;
+    private static final int NODE_BATCH = 200;
+    private static final int EDGE_BATCH = 200;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 4) usage();
@@ -42,6 +42,7 @@ public class Main {
 
                 clearDatabase(session);
                 ensureSchema(session);
+                session.run("CALL db.awaitIndexes()");
 
                 long t0 = System.nanoTime();
                 ingestNodes(session, nodesFile);
