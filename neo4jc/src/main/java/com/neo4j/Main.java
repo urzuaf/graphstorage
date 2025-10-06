@@ -19,8 +19,8 @@ import static org.neo4j.driver.Values.parameters;
 
 public class Main {
 
-    private static final int NODE_BATCH = 200;
-    private static final int EDGE_BATCH = 200;
+    private static final int NODE_BATCH = 100;
+    private static final int EDGE_BATCH = 100;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 4) usage();
@@ -376,8 +376,24 @@ private static void executeEdgeBatch(Transaction tx, List<Map<String, Object>> b
     }
     private static void clearDatabase(Session session) {
     System.out.println("Preparando BD para inserción…");
-    session.run("MATCH (n) DETACH DELETE n");
+    long total = 0;
+    final int LIMIT = 10_000; 
+
+    while (true) {
+        Result r = session.run("""
+            MATCH (n)
+            WITH n LIMIT $limit
+            DETACH DELETE n
+            RETURN count(*) AS c
+        """, parameters("limit", LIMIT));
+
+        long c = r.single().get("c").asLong();
+        total += c;
+        if (c == 0) break;
+        System.out.printf(Locale.ROOT, "  borrados en este paso: %,d (acumulado: %,d)%n", c, total);
+    }
     System.out.println("Base limpia.");
 }
+
 
 }
