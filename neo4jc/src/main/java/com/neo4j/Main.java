@@ -19,8 +19,8 @@ import static org.neo4j.driver.Values.parameters;
 
 public class Main {
 
-    private static final int NODE_BATCH = 100_000;
-    private static final int EDGE_BATCH = 500_000;
+    private static final int NODE_BATCH = 10000;
+    private static final int EDGE_BATCH = 50000;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 4) usage();
