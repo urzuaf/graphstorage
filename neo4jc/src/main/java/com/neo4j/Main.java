@@ -112,13 +112,19 @@ public class Main {
 
     //Ingesta de nodos
  private static void ingestNodes(Session session, Path nodesPgdf) throws IOException {
+    final String cypher = """
+        UNWIND $batch AS row
+        CREATE (n:Node {id: row.id, label: row.label})
+        SET n += row.props
+        """;
+
     try (BufferedReader br = Files.newBufferedReader(nodesPgdf, StandardCharsets.UTF_8)) {
         String line;
         String[] header = null;
         long nCount = 0;
 
-        // agrupar nodos por label
-        Map<String, List<Map<String, Object>>> byLabel = new HashMap<>();
+        // Batch buffer
+        List<Map<String, Object>> batch = new ArrayList<>(NODE_BATCH);
 
         while ((line = br.readLine()) != null) {
             if (line.isBlank()) continue;
@@ -149,26 +155,28 @@ public class Main {
 
             Map<String, Object> nodeData = new HashMap<>();
             nodeData.put("id", id);
+            nodeData.put("label", label);
             nodeData.put("props", props);
-            byLabel.computeIfAbsent(label, k -> new ArrayList<>()).add(nodeData);
+            batch.add(nodeData);
             nCount++;
+
+            if (batch.size() >= NODE_BATCH) {
+                try (Transaction tx = session.beginTransaction()) {
+                    tx.run(new Query(cypher, parameters("batch", batch)));
+                    tx.commit();
+                }
+                //session.run(cypher, parameters("batch", batch));
+                batch.clear();
+
+            }
         }
 
-        // insertar cada grupo con su propio label
-        for (var entry : byLabel.entrySet()) {
-            String label = entry.getKey();
-            List<Map<String, Object>> batch = entry.getValue();
-
-            String cypher = String.format("""
-                UNWIND $batch AS row
-                CREATE (n:%s {id: row.id})
-                SET n += row.props
-                """, label.replaceAll("[^A-Za-z0-9_]", "_")); // sanitize label
-
+        if (!batch.isEmpty()) {
             try (Transaction tx = session.beginTransaction()) {
                 tx.run(new Query(cypher, parameters("batch", batch)));
                 tx.commit();
             }
+            batch.clear();
         }
 
         System.out.printf(Locale.ROOT, "  Nodes: %,d%n", nCount);
