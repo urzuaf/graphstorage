@@ -74,7 +74,7 @@ public class PostgresColumns {
                     queryNodesByPropEquals(cx, key, val);
                 }
                 case "-e" ->{
-                    String filepath = args[1];
+                    String filepath = args[4];
                     medirTiempos(cx, filepath);
                 }
                 default -> usage();
