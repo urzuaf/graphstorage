@@ -3,6 +3,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.sql.*;
 import java.util.*;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 
 public class PostgresColumns {
 
@@ -70,6 +73,10 @@ public class PostgresColumns {
                     String val = spec.substring(p+1);
                     queryNodesByPropEquals(cx, key, val);
                 }
+                case "-e" ->{
+                    String filepath = args[1];
+                    medirTiempos(cx, filepath);
+                }
                 default -> usage();
             }
             cx.commit();
@@ -94,6 +101,42 @@ public class PostgresColumns {
                    java -cp postgresql.jar:. PgdfToPostgres <jdbc_url> <user> <pass> -nv <atributo=valor>
             """);
         System.exit(2);
+    }
+
+        public static void medirTiempos(Connection cx, String rutaArchivo) {
+        List<Long> tiempos = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(rutaArchivo))) {
+            String linea;
+            int contador = 0;
+            while ((linea = br.readLine()) != null) {
+                try {
+                 long inicio = System.nanoTime(); // tiempo en nanosegundos
+                queryNodeWithAllProps(cx, linea);
+                long fin = System.nanoTime();
+
+                long duracion = fin - inicio;
+                tiempos.add(duracion);
+                System.out.printf("Línea %d procesada en %.3f ms%n", ++contador, duracion / 1_000_000.0);                   
+                } catch (Exception e) {
+                    System.out.printf("Línea %d produjo error: %s%n", ++contador, e.getMessage());
+                }
+
+            }
+
+            if (!tiempos.isEmpty()) {
+                double promedio = tiempos.stream()
+                                         .mapToLong(Long::longValue)
+                                         .average()
+                                         .orElse(0.0);
+                System.out.printf("%nTiempo promedio: %.3f ms%n", promedio / 1_000_000.0);
+            } else {
+                System.out.println("El archivo está vacío.");
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     // ===== DDL =====

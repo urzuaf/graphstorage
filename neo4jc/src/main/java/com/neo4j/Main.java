@@ -9,6 +9,8 @@ import org.neo4j.driver.Session;
 import org.neo4j.driver.Transaction;
 import org.neo4j.driver.Record;
 
+import java.io.FileReader;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -77,10 +79,45 @@ public class Main {
                     String val = spec.substring(p + 1);
                     queryNodesByPropEquals(session, key, val);
                 }
+                case "-e" ->{
+                    String src = args[1];
+                    medirTiempos(session, src);
+                }
                 default -> usage();
             }
         }
  
+    }
+
+        public static void medirTiempos(Session sess, String rutaArchivo) {
+        List<Long> tiempos = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(rutaArchivo))) {
+            String linea;
+            int contador = 0;
+            while ((linea = br.readLine()) != null) {
+                long inicio = System.nanoTime(); // tiempo en nanosegundos
+                queryNodeWithAllProps(sess, linea);
+                long fin = System.nanoTime();
+
+                long duracion = fin - inicio;
+                tiempos.add(duracion);
+                System.out.printf("Línea %d procesada en %.3f ms%n", ++contador, duracion / 1_000_000.0);
+            }
+
+            if (!tiempos.isEmpty()) {
+                double promedio = tiempos.stream()
+                                         .mapToLong(Long::longValue)
+                                         .average()
+                                         .orElse(0.0);
+                System.out.printf("%nTiempo promedio: %.3f ms%n", promedio / 1_000_000.0);
+            } else {
+                System.out.println("El archivo está vacío.");
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private static void usage() {
@@ -250,7 +287,6 @@ private static void ingestEdges(Session session, Path edgesPgdf) throws IOExcept
     }
 }
 
-// Ejecuta un lote (MATCH + CREATE para ahorrar memoria; MERGE solo en la relación)
 private static void executeEdgeBatch(Transaction tx, List<Map<String, Object>> batch) {
     Map<String, List<Map<String, Object>>> grouped = new HashMap<>();
     for (Map<String, Object> edge : batch) {

@@ -3,6 +3,11 @@ package com.rocks;
 import java.nio.file.Path;
 import java.util.Scanner;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.List;
+import java.util.ArrayList;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
 
 import com.rocks.db.GraphAPI;
 import com.rocks.db.GraphStore;
@@ -28,6 +33,15 @@ public class Main {
                 }
                 System.out.println("OK");
             }
+            case "experiment" -> {
+                String rutaArchivo = args[2];
+                String db = args[1];
+
+                try (GraphStore store = GraphStore.open(Path.of(db))) {
+                    GraphAPI api = new GraphAPI(store);
+                    medirTiempos(api, rutaArchivo);
+                }
+            }
 
             default -> {
                 Path dbPath = Path.of(cmd);
@@ -36,6 +50,43 @@ public class Main {
                     runTUI(api);
                 }
             }
+        }
+    }
+        public static void medirTiempos(GraphAPI api,String rutaArchivo) {
+        List<Long> tiempos = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(rutaArchivo))) {
+            String linea;
+            int contador = 0;
+            while ((linea = br.readLine()) != null) {
+                try
+                {
+                    long inicio = System.nanoTime(); // tiempo en nanosegundos
+                    api.getNode(linea);
+                    long fin = System.nanoTime();
+                    long duracion = fin - inicio;
+                    tiempos.add(duracion);
+                    System.out.printf("Línea %d procesada en %.3f ms%n", ++contador, duracion / 1_000_000.0);
+                    
+                }catch(Exception e)
+                {
+                    System.out.printf("Error al procesar la línea %d: %s%n", ++contador, e.getMessage());
+                }
+
+            }
+
+            if (!tiempos.isEmpty()) {
+                double promedio = tiempos.stream()
+                                         .mapToLong(Long::longValue)
+                                         .average()
+                                         .orElse(0.0);
+                System.out.printf("%nTiempo promedio: %.3f ms%n", promedio / 1_000_000.0);
+            } else {
+                System.out.println("El archivo está vacío.");
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 

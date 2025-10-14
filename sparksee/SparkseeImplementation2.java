@@ -57,6 +57,8 @@ public class SparkseeImplementation2 {
         long startTime;
         long endTime;
 
+        
+
         if (params.containsKey("-n") && params.containsKey("-e") && params.containsKey("-d")) {
             System.out.println("Saving graph...");
             app.runIngest(params.get("-n"), params.get("-e"), params.get("-d"));
@@ -82,7 +84,49 @@ public class SparkseeImplementation2 {
             return;
         }
 
+        if (params.containsKey("-e") && params.containsKey("-d")) {
+            medirTiempos(app, params.get("-e"), params.get("-d"));
+            System.out.println("Done.");
+            return;
+        }
+
         System.out.println("Invalid arguments.");
+    }
+
+        public static void medirTiempos(SparkseeImplementation2 app, String rutaArchivo, String dbPath) {
+        List<Long> tiempos = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(rutaArchivo))) {
+            String linea;
+            int contador = 0;
+            while ((linea = br.readLine()) != null) {
+                try{
+
+                    long inicio = System.nanoTime(); // tiempo en nanosegundos
+                    app.runGetNode(dbPath, linea);
+                    long fin = System.nanoTime();
+    
+                    long duracion = fin - inicio;
+                    tiempos.add(duracion);
+                    System.out.printf("Línea %d procesada en %.3f ms%n", ++contador, duracion / 1_000_000.0);
+                }catch(Exception e){
+                    System.out.printf("Línea %d produjo error: %s%n", ++contador, e.getMessage());
+                }
+            }
+
+            if (!tiempos.isEmpty()) {
+                double promedio = tiempos.stream()
+                                         .mapToLong(Long::longValue)
+                                         .average()
+                                         .orElse(0.0);
+                System.out.printf("%nTiempo promedio: %.3f ms%n", promedio / 1_000_000.0);
+            } else {
+                System.out.println("El archivo está vacío.");
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private void runIngest(String nodesPath, String edgesPath, String dbPath) throws Exception {

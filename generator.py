@@ -8,7 +8,7 @@ from typing import Dict, List, Sequence, Tuple
 # CONFIG
 # =========================
 SEED = 1337
-NUM_NODOS = 1_000
+NUM_NODOS = 1_000_000
 NUM_ARISTAS = 4500
 
 OUT_NODES = Path("Nodes.pgdf")
@@ -34,52 +34,127 @@ ORG_SCHEMAS: List[Tuple[str, ...]] = [
 
 # Names & data pools
 FIRST_NAMES = [
-    "Juan", "Alexis", "María", "Lucía", "Bart", "Lisa", "Maggie", "Homer",
-    "Milhouse", "Apu", "Lenny", "Barney", "Moe", "Sofía", "Carlos", "Elena",
+    "Juan",
+    "Alexis",
+    "María",
+    "Lucía",
+    "Bart",
+    "Lisa",
+    "Maggie",
+    "Homer",
+    "Milhouse",
+    "Apu",
+    "Lenny",
+    "Barney",
+    "Moe",
+    "Sofía",
+    "Carlos",
+    "Elena",
 ]
 LAST_NAMES = [
-    "García", "Smith", "Pérez", "González", "Lopez", "Martínez", "Rodríguez",
-    "Fernández", "Santos", "Romero", "Vega", "Núñez", "Silva", "Rojas",
+    "García",
+    "Smith",
+    "Pérez",
+    "González",
+    "Lopez",
+    "Martínez",
+    "Rodríguez",
+    "Fernández",
+    "Santos",
+    "Romero",
+    "Vega",
+    "Núñez",
+    "Silva",
+    "Rojas",
 ]
-CITIES = ["Springfield", "Shelbyville", "Denver", "Omaha", "Las Vegas", "Lima", "Santiago", "Cochabamba"]
-PROFESSIONS = ["Engineer", "Teacher", "Designer", "Developer", "Nurse", "Chef", "Sales", "Analyst"]
+CITIES = [
+    "Springfield",
+    "Shelbyville",
+    "Denver",
+    "Omaha",
+    "Las Vegas",
+    "Lima",
+    "Santiago",
+    "Cochabamba",
+]
+PROFESSIONS = [
+    "Engineer",
+    "Teacher",
+    "Designer",
+    "Developer",
+    "Nurse",
+    "Chef",
+    "Sales",
+    "Analyst",
+]
 ORG_TYPES = ["food", "retail", "tech", "education", "healthcare", "logistics"]
-INDUSTRIES = ["Food & Beverage", "Retail", "Software", "Education", "Healthcare", "Transportation"]
+INDUSTRIES = [
+    "Food & Beverage",
+    "Retail",
+    "Software",
+    "Education",
+    "Healthcare",
+    "Transportation",
+]
 
 # =========================
 # UTILITIES
 # =========================
 
+
 def choice_rand(rng: random.Random, arr: Sequence[str]) -> str:
     return arr[rng.randrange(len(arr))]
+
 
 def make_person_name(rng: random.Random) -> str:
     return f"{choice_rand(rng, FIRST_NAMES)} {choice_rand(rng, LAST_NAMES)}"
 
+
 def make_org_name(rng: random.Random, idx: int) -> str:
-    base = choice_rand(rng, ["Global", "Prime", "Nova", "Andes", "Pioneer", "Vertex", "Atlas", "Nimbus"])
-    tail = choice_rand(rng, ["Labs", "Foods", "Retail", "Systems", "Group", "Logistics", "Health", "Academy"])
+    base = choice_rand(
+        rng,
+        ["Global", "Prime", "Nova", "Andes", "Pioneer", "Vertex", "Atlas", "Nimbus"],
+    )
+    tail = choice_rand(
+        rng,
+        [
+            "Labs",
+            "Foods",
+            "Retail",
+            "Systems",
+            "Group",
+            "Logistics",
+            "Health",
+            "Academy",
+        ],
+    )
     return f"{base} {tail} {idx}"
+
 
 def make_email(name: str) -> str:
     user = name.lower().replace(" ", ".")
     domain = choice_rand(random, ["mail.com", "example.org", "inbox.net"])
     return f"{user}@{domain}"
 
+
 def make_phone(rng: random.Random) -> str:
     return f"+{rng.randrange(1, 90)}-{rng.randrange(100, 999)}-{rng.randrange(100000, 999999)}"
+
 
 def make_website(rng: random.Random, slug: str) -> str:
     host = slug.lower().replace(" ", "")
     tld = choice_rand(rng, [".com", ".org", ".net"])
     return f"https://{host}{tld}"
 
+
 def make_url(node_id: str) -> str:
     return f"{BASE_URL}{node_id}"
+
 
 # =========================
 # MAIN GENERATION
 # =========================
+
 
 def main() -> None:
     rng = random.Random(SEED)
@@ -158,14 +233,19 @@ def main() -> None:
         print("No Person nodes generated; cannot create typed edges.", file=sys.stderr)
         return
     if not org_ids:
-        print("Warning: No Organization nodes generated; 'Works_for' and some 'Likes' edges will be limited.", file=sys.stderr)
+        print(
+            "Warning: No Organization nodes generated; 'Works_for' and some 'Likes' edges will be limited.",
+            file=sys.stderr,
+        )
 
     with OUT_EDGES.open("w", encoding="utf-8") as f_edges:
         f_edges.write("@id|@label|@dir|@out|@in\n")
 
         prand = rng.randrange
         choose_person = lambda: person_ids[prand(0, len(person_ids))]
-        choose_org = (lambda: org_ids[prand(0, len(org_ids))]) if org_ids else choose_person
+        choose_org = (
+            (lambda: org_ids[prand(0, len(org_ids))]) if org_ids else choose_person
+        )
 
         label_buckets = [("Knows", 0.4), ("Works_for", 0.3), ("Likes", 0.3)]
         edge_counts = [int(NUM_ARISTAS * w) for _, w in label_buckets]
