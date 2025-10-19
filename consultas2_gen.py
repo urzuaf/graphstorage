@@ -6,7 +6,7 @@ from pathlib import Path
 LABELS = ["Likes", "Knows", "IsLocatedIn", "HasCreator", "ReplyOf", "HasTag", "ContainerOf", "HasMember", "HasInterest", "HasType"]
 PROPS  = [
     "browserUsed=Firefox",
-    "title=Album 24 of Paulo Costa",
+    "creationDate=1309120961393",
     "type=university",
     "firstName=Carlos",
     "name=Barcelona",
