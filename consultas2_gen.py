@@ -3,14 +3,16 @@ import argparse
 import os
 from pathlib import Path
 
-LABELS = ["Likes", "Knows", "IsLocatedIn", "HasCreator", "ReplyOf"]
+LABELS = ["Likes", "Knows", "IsLocatedIn", "HasCreator", "ReplyOf", "HasTag", "ContainerOf", "HasMember", "HasInterest", "HasType"]
 PROPS  = [
-    "locationIP=61.17.197.42",
-    "locationIP=109.200.162.181",
-    "locationIP=41.138.47.146",
-    "firstName=John",
-    "firstName=Carlos",
-    "firstName=Rahul",
+    "browserUsed=Firefox",
+    "title=Album 24 of Paulo Costa",
+    "type=university",
+    "firstname=Carlos",
+    "name=Barcelona",
+    "length=0",
+    "name=A_Song_for_You",
+    "name=Company"
 ]
 
 HEADER = "#!/usr/bin/env bash\nset -euo pipefail\n\n"
