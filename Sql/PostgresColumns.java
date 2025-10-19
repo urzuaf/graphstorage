@@ -493,7 +493,7 @@ private static void queryEdgeIdsByLabel(Connection cx, String label) throws SQLE
 
 private static void queryNodesByPropEquals(Connection cx, String key, String value) throws SQLException {
     long t0 = System.nanoTime();
-    String sql = "SELECT node_id FROM node_properties WHERE key = ? AND value_lc = ? ";
+    String sql = "SELECT node_id FROM node_properties WHERE key = ? AND value = ? ";
 
     long count = 0L;
     final long LIMIT_PRINT = 10;
