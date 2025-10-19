@@ -501,7 +501,7 @@ private static void queryNodesByPropEquals(Connection cx, String key, String val
     try (PreparedStatement ps = cx.prepareStatement(sql)) {
         ps.setFetchSize(10_000);
         ps.setString(1, key);
-        ps.setString(2, value.toLowerCase(Locale.ROOT));
+        ps.setString(2, value);
         try (ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 count++;
