@@ -49,25 +49,25 @@ def main():
                 )
 
                 line_neo4j = (
-                    'mvn compile exec:java -Dexec.mainClass="com.neo4j.Main" '
+                    'mvn -q -e compile exec:java -Dexec.mainClass="com.neo4j.Main" '
                     f'-Dexec.args="bolt://localhost:7687 neo4j F3rn4nd0 -g {nodeid}" '
                     f">> resultados_neo4j\n"
                 )
 
                 line_mapdb = (
-                    'mvn compile exec:java -Dexec.mainClass="com.map.Main" '
-                    f'-Dexec.args="graph.gbd -g {nodeid}" '
+                    'mvn -q -e compile exec:java -Dexec.mainClass="com.map.Main" '
+                    f'-Dexec.args="./gbd -g {nodeid}" '
                     f">> resultados_mapdb\n"
                 )
 
                 line_rocksdb = (
-                    'mvn compile exec:java -Dexec.mainClass="com.rocks.Main" '
-                    f'-Dexec.args="graph.gbd -g {nodeid}" '
+                    'mvn -q -e compile exec:java -Dexec.mainClass="com.rocks.Main" '
+                    f'-Dexec.args="./gbd -g {nodeid}" '
                     f">> resultados_rocksdb\n"
                 )
 
                 line_sparksee = (
-                    f"java -cp sparkseejava.jar:. SparkseeImplementation2 -d graph.gdb -g {nodeid} "
+                    f"java -cp sparkseejava.jar:. SparkseeImplementation2 -d gdb -g {nodeid} "
                     f">> resultados_sparksee\n"
                 )
 
