@@ -2,34 +2,37 @@
 import re
 import sys
 
-pattern = re.compile(r'time\s*:\s*([0-9]+(?:\.[0-9]+)?)\s*ms', re.IGNORECASE)
+# Captura números como 43, 43.24, 0.5 seguidos de "ms" (insensible a mayúsculas)
+# Evita pegarse a palabras (p.ej., "x43msy" no matchea).
+MS_PATTERN = re.compile(r'(?<!\w)(\d+(?:\.\d+)?)\s*ms\b', re.IGNORECASE)
 
-def extract_times(path):
-    times = []
-    # Read from file or stdin if path is "-"
+def extract_ms(path):
+    vals = []
     f = sys.stdin if path == "-" else open(path, "r", encoding="utf-8", errors="ignore")
     try:
         for line in f:
-            for m in pattern.finditer(line):
-                times.append(float(m.group(1)))
+            for m in MS_PATTERN.finditer(line):
+                vals.append(float(m.group(1)))
     finally:
         if f is not sys.stdin:
             f.close()
-    return times
+    return vals
 
 def main():
     if len(sys.argv) < 2:
         print("Usage: python avg_time_ms.py <logfile or ->", file=sys.stderr)
         sys.exit(2)
 
-    times = extract_times(sys.argv[1])
-    if not times:
-        print("No 'time : ... ms' entries found.")
+    vals = extract_ms(sys.argv[1])
+    if not vals:
+        print("No '<number> ms' entries found.")
         sys.exit(1)
 
-    avg = sum(times) / len(times)
-    print(f"Count: {len(times)}")
-    print(f"Average time: {avg:.3f} ms")
+    total = sum(vals)
+    avg = total / len(vals)
+    print(f"Count: {len(vals)}")
+    print(f"Total: {total:.3f} ms")
+    print(f"Average: {avg:.3f} ms")
 
 if __name__ == "__main__":
     main()
