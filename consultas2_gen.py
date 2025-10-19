@@ -5,14 +5,14 @@ from pathlib import Path
 
 LABELS = ["Likes", "Knows", "IsLocatedIn", "HasCreator", "ReplyOf", "HasTag", "ContainerOf", "HasMember", "HasInterest", "HasType"]
 PROPS  = [
-    "browserUsed=firefox",
-    "title=album 24 of Paulo Costa",
+    "browserUsed=Firefox",
+    "title=Album 24 of Paulo Costa",
     "type=university",
-    "firstname=carlos",
-    "name=barcelona",
+    "firstname=Carlos",
+    "name=Barcelona",
     "length=0",
-    "name=a_Song_for_You",
-    "name=company"
+    "name=A_Song_for_You",
+    "name=Company"
 ]
 
 HEADER = "#!/usr/bin/env bash\nset -euo pipefail\n\n"
