@@ -580,7 +580,7 @@ public class SparkseeImplementation2 {
                 while (it.hasNext()) {
                     long oid = it.next();
                     if ( total < limit) {
-                    System.out.print("OID=" + oid);
+                        System.out.print("OID=" + oid);
                     }
 
                     if (extAttr != Attribute.InvalidAttribute) {
@@ -648,7 +648,6 @@ public class SparkseeImplementation2 {
 
         com.sparsity.sparksee.gdb.Objects acc = null;
 
-        // ✅ Iterate only node types
         TypeList tlist = g.findNodeTypes();
         TypeListIterator tIt = tlist.iterator();
         while (tIt.hasNext()) {
@@ -675,9 +674,9 @@ public class SparkseeImplementation2 {
                 acc = tmp;
             }
         }
-        // (no tlist.close())
 
         long total = 0;
+        int limit = 10;
         if (acc != null) {
             com.sparsity.sparksee.gdb.ObjectsIterator it = acc.iterator();
             try {
@@ -686,11 +685,12 @@ public class SparkseeImplementation2 {
                     long oid = it.next();
                     int tId = g.getObjectType(oid);
                     String tName = g.getType(tId).getName();
-
-                    System.out.print("OID=" + oid + "  type=" + tName);
+                    if (total < limit) {
+                        System.out.print("OID=" + oid + "  type=" + tName);
+                    }
                     if (extIdAttr != Attribute.InvalidAttribute) {
                         g.getAttribute(oid, extIdAttr, out);
-                        if (!out.isNull() && total < 10) System.out.print("  ext_id=" + out.getString());
+                        if (!out.isNull() && total < limit) System.out.print("  ext_id=" + out.getString());
                     }
                     System.out.println();
                     total++;
