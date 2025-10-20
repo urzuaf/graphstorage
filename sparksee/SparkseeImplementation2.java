@@ -227,9 +227,10 @@ public class SparkseeImplementation2 {
 
     private void printEdgeIdsByLabel(Session sess, Graph g, String label) {
         System.out.println("searching edges label='" + label + "' ...");
-        long t0 = System.nanoTime();
         sess.begin();
         try {
+
+            long t0 = System.nanoTime();
             int edgeType = g.findType(label);
             if (edgeType == Type.InvalidType) {
                 System.out.println("Edge label not found: " + label);
@@ -515,6 +516,7 @@ public class SparkseeImplementation2 {
         Session sess = null;
 
         try {
+            sess.begin();
             System.out.println("Loading graph from " + dbPath);
             db = sparksee.open(dbPath, true);
             db.disableRollback();
@@ -522,6 +524,8 @@ public class SparkseeImplementation2 {
             Graph g = sess.getGraph();
             System.out.println("Graph loaded from " + dbPath);
 
+
+            long t0 = System.nanoTime();
             // check type and attribute
             int typeId = g.findType(typeName);
             if (typeId == Type.InvalidType) {
@@ -561,8 +565,6 @@ public class SparkseeImplementation2 {
                 v.setString(rawValue);
             }
 
-            sess.begin();
-            long t0 = System.nanoTime();
 
             // Select all objects whose <attrName> == <value>
             com.sparsity.sparksee.gdb.Objects results = g.select(attrId, Condition.Equal, v);
@@ -573,7 +575,8 @@ public class SparkseeImplementation2 {
                 int extAttr = (extIdAttr != Attribute.InvalidAttribute)
                         ? extIdAttr
                         : g.findAttribute(Type.NodesType, "ext_id");
-
+                int limit = 10;
+                int count = 0;
                 Value out = new Value();
                 while (it.hasNext()) {
                     long oid = it.next();
@@ -581,19 +584,22 @@ public class SparkseeImplementation2 {
 
                     if (extAttr != Attribute.InvalidAttribute) {
                         g.getAttribute(oid, extAttr, out);
-                        if (!out.isNull())
+                        if (!out.isNull() && count < limit) {
                             System.out.print("  ext_id=" + out.getString());
+                            count++;
+                        }
                     }
                     System.out.println();
                     total++;
                 }
+
+            long t1 = System.nanoTime();
+            System.out.printf("Matched %d nodes (%.2f ms)%n", total, (t1 - t0) / 1_000_000.0);
             } finally {
                 it.close();
                 results.close();
             }
 
-            long t1 = System.nanoTime();
-            System.out.printf("Matched %d nodes (%.2f ms)%n", total, (t1 - t0) / 1_000_000.0);
             sess.commit();
 
         } catch (RuntimeException e) {
