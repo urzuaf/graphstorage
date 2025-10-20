@@ -617,7 +617,7 @@ public class SparkseeImplementation2 {
         }
     }
 
-    private void runFindNodesByAttrAcrossTypes(String dbPath, String spec) throws Exception {
+private void runFindNodesByAttrAcrossTypes(String dbPath, String spec) throws Exception {
     // spec: "<attr>=<value>" or "<attr>:<value>"
     String attrName, rawValue;
     int sep = spec.indexOf('=');
@@ -640,7 +640,8 @@ public class SparkseeImplementation2 {
         Graph g = sess.getGraph();
 
         if (extIdAttr == Attribute.InvalidAttribute) {
-            extIdAttr = g.findAttribute(Type.NodesType, "ext_id"); // optional pretty print
+            // intento "bonito", si no existe no pasa nada
+            extIdAttr = g.findAttribute(Type.NodesType, "ext_id");
         }
 
         sess.begin();
@@ -648,6 +649,7 @@ public class SparkseeImplementation2 {
 
         com.sparsity.sparksee.gdb.Objects acc = null;
 
+        // Recorremos TODOS los tipos de nodo buscando el atributo
         TypeList tlist = g.findNodeTypes();
         TypeListIterator tIt = tlist.iterator();
         while (tIt.hasNext()) {
@@ -665,7 +667,7 @@ public class SparkseeImplementation2 {
             com.sparsity.sparksee.gdb.Objects part = g.select(attrId, Condition.Equal, v);
 
             if (acc == null) {
-                acc = part; // take ownership
+                acc = part; // tomamos ownership
             } else {
                 com.sparsity.sparksee.gdb.Objects tmp =
                         com.sparsity.sparksee.gdb.Objects.combineUnion(acc, part);
@@ -677,23 +679,33 @@ public class SparkseeImplementation2 {
 
         long total = 0;
         int limit = 10;
+        int printed = 0; // <= control de salida
         if (acc != null) {
             com.sparsity.sparksee.gdb.ObjectsIterator it = acc.iterator();
             try {
                 Value out = new Value();
                 while (it.hasNext()) {
                     long oid = it.next();
-                    int tId = g.getObjectType(oid);
-                    String tName = g.getType(tId).getName();
-                    if (total < limit) {
-                        System.out.print("OID=" + oid + "  type=" + tName);
+                    total++; // seguimos contando TODOS
+
+                    if (printed < limit) { // solo imprimimos los primeros 'limit'
+                        int tId = g.getObjectType(oid);
+                        String tName = g.getType(tId).getName();
+
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("OID=").append(oid).append("  type=").append(tName);
+
+                        if (extIdAttr != Attribute.InvalidAttribute) {
+                            g.getAttribute(oid, extIdAttr, out);
+                            if (!out.isNull()) {
+                                sb.append("  ext_id=").append(out.getString());
+                            }
+                        }
+
+                        System.out.println(sb.toString());
+                        printed++;
                     }
-                    if (extIdAttr != Attribute.InvalidAttribute) {
-                        g.getAttribute(oid, extIdAttr, out);
-                        if (!out.isNull() && total < limit) System.out.print("  ext_id=" + out.getString());
-                    }
-                    System.out.println();
-                    total++;
+                    // Si printed >= limit no imprimimos NADA (ni líneas en blanco)
                 }
             } finally {
                 it.close();
@@ -715,6 +727,7 @@ public class SparkseeImplementation2 {
         sparksee.close();
     }
 }
+
 
 
     private static boolean setValueForType(Value v, DataType dt, String raw) {
