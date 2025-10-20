@@ -576,20 +576,19 @@ public class SparkseeImplementation2 {
                         ? extIdAttr
                         : g.findAttribute(Type.NodesType, "ext_id");
                 int limit = 10;
-                int count = 0;
                 Value out = new Value();
                 while (it.hasNext()) {
                     long oid = it.next();
+                    if ( total < limit) {
                     System.out.print("OID=" + oid);
+                    }
 
                     if (extAttr != Attribute.InvalidAttribute) {
                         g.getAttribute(oid, extAttr, out);
-                        if (!out.isNull() && count < limit) {
+                        if (!out.isNull() && total < limit) {
                             System.out.print("  ext_id=" + out.getString());
-                            count++;
                         }
                     }
-                    System.out.println();
                     total++;
                 }
 
